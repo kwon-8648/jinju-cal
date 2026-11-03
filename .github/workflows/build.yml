@@ -42,7 +42,7 @@ jobs:
         run: |
           $v = (Select-String -Path jinju_cal/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item "dist/상품가격계산기.exe" "out/상품가격계산기-$v-windows.exe"
+          Copy-Item "dist/상품가격계산기.exe" "out/jinju-cal-$v-windows.exe"
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: out/* }
 
@@ -61,7 +61,7 @@ jobs:
           mkdir -p out dmg
           cp -R "dist/상품가격계산기.app" dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "상품가격계산기" -srcfolder dmg -ov -format UDZO "out/상품가격계산기-$v-mac.dmg"
+          hdiutil create -volname "상품가격계산기" -srcfolder dmg -ov -format UDZO "out/jinju-cal-$v-mac.dmg"
       - uses: actions/upload-artifact@v4
         with: { name: mac, path: out/* }
 
