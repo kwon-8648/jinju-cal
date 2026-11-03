@@ -78,6 +78,10 @@ jobs:
           v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
           ls -la files
           if gh release view "v$v" >/dev/null 2>&1; then
+            # 이번에 만든 것과 이름이 다른 예전 파일은 지움
+            for a in $(gh api "repos/${{ github.repository }}/releases/tags/v$v" -q '.assets[] | "\(.id)=\(.name)"'); do
+              [ -e "files/${a#*=}" ] || gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${a%%=*}"
+            done
             gh release upload "v$v" files/* --clobber
           else
             gh release create "v$v" files/* --title "상품가격계산기 $v" --notes "윈도우: .exe 를 내려받아 실행 · 맥: .dmg 를 열고 앱을 응용 프로그램 폴더로 끌어 넣기 (처음 한 번은 앱을 오른쪽 클릭 → 열기)"
