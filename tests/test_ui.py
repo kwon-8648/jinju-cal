@@ -58,7 +58,15 @@ try:
     price.fetch_any([base_url + "/500", "http://127.0.0.1:1/x"])
     check("모두 실패하면 오류", False)
 except core.PriceError as e:
-    check("모두 실패하면 첫 오류", str(e) == "HTTP 500", e)
+    check("모두 실패하면 주소마다 원인", str(e) == "금거래소: HTTP 500 / 중계: 서버가 접속을 거부함", e)
+try:
+    price.fetch_quote(base_url + "/empty")
+except core.PriceError as e:
+    check("시세 항목 없는 응답", str(e) == "officialPrice4 항목이 없습니다", e)
+try:
+    price.fetch_quote("http://no-such-host.invalid/x", timeout=5)
+except core.PriceError as e:
+    check("주소 못 찾음", str(e).startswith("주소를 찾지 못함") or str(e).startswith("접속 실패"), e)
 
 # ---------------------------------------------------------------- 화면
 app = QApplication([])

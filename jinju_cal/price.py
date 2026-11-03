@@ -1,6 +1,7 @@
 """한국금거래소 '내가 살 때' 시세 조회 (PC 프로그램이라 금거래소에 바로 접속, 안 되면 서울 중계 주소)."""
 from __future__ import annotations
 
+import socket
 import ssl
 import threading
 import urllib.error
@@ -27,6 +28,28 @@ def _ssl_context():
         return ssl.create_default_context()
 
 
+def _reason(e: BaseException) -> str:
+    """접속 실패 원인을 알아볼 수 있는 말로."""
+    if isinstance(e, urllib.error.HTTPError):
+        return f"HTTP {e.code}"
+    r = e.reason if isinstance(e, urllib.error.URLError) else e
+    if isinstance(r, ssl.SSLCertVerificationError):
+        return "보안 인증서 확인 실패"
+    if isinstance(r, ssl.SSLError):
+        return "보안 연결 실패"
+    if isinstance(r, (socket.timeout, TimeoutError)):
+        return "응답 시간 초과"
+    if isinstance(r, socket.gaierror):
+        return "주소를 찾지 못함 (인터넷 연결 확인)"
+    if isinstance(r, ConnectionRefusedError):
+        return "서버가 접속을 거부함"
+    if isinstance(r, (ConnectionResetError, ConnectionAbortedError)):
+        return "서버가 연결을 끊음"
+    if isinstance(r, OSError) and getattr(r, "errno", None) in (50, 51, 65, 101):
+        return "인터넷 연결 없음"
+    return f"접속 실패 ({type(r).__name__})"
+
+
 def fetch_quote(url: str, timeout: float = 15.0):
     req = urllib.request.Request(url, headers=HEADERS)
     try:
@@ -39,23 +62,25 @@ def fetch_quote(url: str, timeout: float = 15.0):
                 raise PriceError("응답이 중간에 끊김")
     except PriceError:
         raise
-    except urllib.error.HTTPError as e:
-        raise PriceError(f"HTTP {e.code}")
-    except Exception:
-        raise PriceError("인터넷 연결 또는 서버 접속 실패")
+    except Exception as e:
+        raise PriceError(_reason(e))
     return parse_api(text)
 
 
+SOURCE_NAMES = ["금거래소", "중계"]
+
+
 def fetch_any(urls=None):
-    """주소를 차례로 시도. 모두 실패하면 첫 주소의 오류를 냄."""
-    first = None
-    for url in urls or PRICE_URLS:
+    """주소를 차례로 시도. 모두 실패하면 주소마다의 실패 원인을 함께 알려 줌."""
+    urls = urls or PRICE_URLS
+    errs = []
+    for i, url in enumerate(urls):
         try:
             return fetch_quote(url)
         except PriceError as e:
-            if first is None:
-                first = e
-    raise first or PriceError("조회 실패")
+            name = SOURCE_NAMES[i] if i < len(SOURCE_NAMES) else f"주소 {i + 1}"
+            errs.append(f"{name}: {e}")
+    raise PriceError(" / ".join(errs) or "조회 실패")
 
 
 class PriceFetcher(QObject):
