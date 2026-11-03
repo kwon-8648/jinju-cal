@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import APP_NAME, __version__, storage
-from .core import GPD, UNITS, COLORS, base, commas, fixed2, js_round, karat, parse_num, pure, won
+from .core import GPD, UNITS, base, commas, fixed2, js_round, karat, karat_excl, parse_num, pure, won
 from .price import PriceFetcher
 
 KARAT_KEYS = ["10", "14", "18"]
@@ -76,6 +76,8 @@ def stylesheet():
     QLabel#th {{ color:{C['muted']}; font-size:12px; }}
     QLabel#kk {{ color:{C['gold']}; font-weight:700; font-size:15px; }}
     QLabel#kv {{ font-size:15px; }}
+    QLabel#kfinx {{ font-size:17px; font-weight:700; border:1px solid {C['line']}; border-radius:4px; padding:4px 8px; }}
+    QFrame#vline {{ background:{C['line']}; border:none; }}
     QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:4px 8px; }}
     QFrame#cell {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellincl {{ border:1px solid {C['line']}; border-radius:4px; background:{C['soft']}; }}
@@ -279,12 +281,13 @@ class MainWindow(QMainWindow):
         kh.setSpacing(12)
         kh.addWidget(label("10K · 14K · 18K 상품", "h2"))
         kh.addStretch(1)
-        kh.addWidget(label("색상", "lab"))
-        self.k_color = QComboBox()
-        self.k_color.addItem("선택 안 함", "")
-        for c in COLORS:
-            self.k_color.addItem(c, c)
-        kh.addWidget(self.k_color)
+        self.k_white = QCheckBox("화이트")
+        self.k_white.setToolTip("체크하면 판매가에 화이트골드 추가금을 더합니다")
+        kh.addWidget(self.k_white)
+        sep = QFrame()
+        sep.setObjectName("vline")
+        sep.setFixedSize(1, 18)
+        kh.addWidget(sep)
         self.kchk = {}
         for k in KARAT_KEYS:
             cb = QCheckBox(k + "K")
@@ -296,7 +299,7 @@ class MainWindow(QMainWindow):
 
         r5 = QGridLayout()
         r5.setHorizontalSpacing(10)
-        for i, (key, cap, ph) in enumerate([("ag", "공통 중량 (g)", ""), ("ad", "환산 중량 (돈)", ""), ("al", "공통 공임 (부가세 별도)", ""),
+        for i, (key, cap, ph) in enumerate([("ag", "공통 중량 (g)", ""), ("ad", "환산 중량 (돈)", ""), ("al", "공임 (부가세 별도)", ""),
                                             ("dia", "랩다이아 알값 (부가세 별도)", "0"), ("set", "다이아 셋팅비 (부가세 별도)", "0")]):
             fd = Field(cap, ph)
             self.f[key] = fd.edit
@@ -319,13 +322,13 @@ class MainWindow(QMainWindow):
         self.kgrid.setContentsMargins(12, 10, 12, 10)
         self.kgrid.setHorizontalSpacing(14)
         self.kgrid.setVerticalSpacing(8)
-        heads = ["금종류", "금 원가 · 부가세 별도", "공임 포함 원가 · 부가세 포함", "최종 판매가 · 부가세 포함"]
+        heads = ["금종류", "금 원가 · 부가세 별도", "공임 포함 원가 · 부가세 포함", "최종 판매가 · 부가세 별도", "최종 판매가 · 부가세 포함"]
         for i, h in enumerate(heads):
             lb = label(h, "th")
             lb.setAlignment((Qt.AlignLeft if i == 0 else Qt.AlignRight) | Qt.AlignVCenter)
             self.kgrid.addWidget(lb, 0, i)
         self.kgrid.setColumnStretch(0, 2)
-        for i in (1, 2, 3):
+        for i in (1, 2, 3, 4):
             self.kgrid.setColumnStretch(i, 3)
         self.krows = {}
         for r, k in enumerate(KARAT_KEYS, start=1):
@@ -333,17 +336,19 @@ class MainWindow(QMainWindow):
             kk.setTextFormat(Qt.RichText)
             g = label("-", "kv")
             c = label("-", "kv")
+            finx = label("-", "kfinx")
+            finx.setTextFormat(Qt.RichText)
             fin = label("-", "kfin")
             fin.setTextFormat(Qt.RichText)
-            for w in (g, c, fin):
+            for w in (g, c, finx, fin):
                 w.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 w.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            for i, w in enumerate((kk, g, c, fin)):
+            for i, w in enumerate((kk, g, c, finx, fin)):
                 self.kgrid.addWidget(w, r, i)
-            self.krows[k] = (kk, g, c, fin)
+            self.krows[k] = (kk, g, c, finx, fin)
         self.kempty = label("위 체크박스에서 표시할 캐럿을 선택하세요.", "note")
         self.kempty.setAlignment(Qt.AlignCenter)
-        self.kgrid.addWidget(self.kempty, 4, 0, 1, 4)
+        self.kgrid.addWidget(self.kempty, 4, 0, 1, 5)
         kl.addWidget(self.ktable)
         stack.addWidget(kc)
 
@@ -418,7 +423,7 @@ class MainWindow(QMainWindow):
         for cb in self.kchk.values():
             cb.toggled.connect(self.on_change)
         self.f_unit.currentIndexChanged.connect(self.on_change)
-        self.k_color.currentIndexChanged.connect(self.recompute)
+        self.k_white.toggled.connect(self.recompute)
         self.b_manual.clicked.connect(self.apply_manual)
         self.i_price.returnPressed.connect(self.apply_manual)
         self.b_refresh.clicked.connect(self.start_fetch)
@@ -480,8 +485,8 @@ class MainWindow(QMainWindow):
     def num(self, key, allow_blank=False):
         return parse_num(self.f[key].text(), allow_blank)
 
-    def white_extra(self, color):
-        if color != "화이트":
+    def white_extra(self, white: bool):
+        if not white:
             return 0
         v, ok = self.num("white", True)
         return js_round(v) if ok and v > 0 else 0
@@ -510,8 +515,8 @@ class MainWindow(QMainWindow):
         bad("al", not lok)
         wx, wxok = self.num("white", True)
         bad("white", not wxok or wx < 0)
-        kc = self.k_color.currentData() or ""
-        kx = self.white_extra(kc)
+        kw = self.k_white.isChecked()
+        kx = self.white_extra(kw)
         dia, dok = self.num("dia", True)
         bad("dia", not dok)
         setv, sok = self.num("set", True)
@@ -526,26 +531,33 @@ class MainWindow(QMainWindow):
             m, mok = self.num("m" + k)
             mok = mok and 0 <= m < 100
             bad("m" + k, not mok)
-            kk, gl, cl, fl = self.krows[k]
+            kk, gl, cl, fx, fl = self.krows[k]
             on = self.kchk[k].isChecked()
-            for w in (kk, gl, cl, fl):
+            for w in (kk, gl, cl, fx, fl):
                 w.setVisible(on)
             if not on:
                 continue
             any_row = True
             r = karat(self.price, vat, g, labor, dia, setv, pct, m, unit) if (self.has_price and vok and gok and lok and pok and mok) else None
             if r:
-                kk.setText(f"{k}K" + (f' <span style="font-size:12px;color:{C["muted"]};font-weight:500">{kc}</span>' if kc else ""))
+                small = lambda t: f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">{t}</span>'
+                kk.setText(f"{k}K" + (f' <span style="font-size:12px;color:{C["muted"]};font-weight:500">화이트</span>' if kw else ""))
                 gl.setText(won(r["gold"]))
                 cl.setText(won(r["cost_incl"]))
-                fl.setText(won(r["final"] + kx) + (f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">화이트 +{commas(kx)} 포함</span>' if kx else ""))
+                x = karat_excl(self.price, vat, g, labor, dia, setv, pct, m, unit, kx)
+                fx.setText(won(x) + (small(f"화이트 +{commas(kx / (1 + vat / 100))} 포함") if kx else ""))
+                fl.setText(won(r["final"] + kx) + (small(f"화이트 +{commas(kx)} 포함") if kx else ""))
+                fx.setToolTip("")
                 fl.setToolTip("")
             else:
                 kk.setText(f"{k}K")
                 gl.setText("-")
                 cl.setText("-")
+                fx.setText("-")
                 fl.setText("입력 확인" if self.has_price else "-")
-                fl.setToolTip("노란 칸 중 빨간 칸을 확인하세요" if self.has_price else "시세를 먼저 입력하세요")
+                tip = "노란 칸 중 빨간 칸을 확인하세요" if self.has_price else "시세를 먼저 입력하세요"
+                fx.setToolTip(tip)
+                fl.setToolTip(tip)
         self.kempty.setVisible(not any_row)
 
         if self.pg_exact is not None:
@@ -654,7 +666,7 @@ class MainWindow(QMainWindow):
             self.ag_exact = None
             for k in ("ag", "ad", "al", "dia", "set"):
                 self.f[k].setText("")
-            self.k_color.setCurrentIndex(0)
+            self.k_white.setChecked(False)
         else:
             self.pg_exact = None
             for k in ("pg", "pd", "ring", "pl"):

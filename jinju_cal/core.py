@@ -12,7 +12,6 @@ import re
 GPD = 3.75  # 1돈 = 3.75g
 MAX_AMOUNT = 1e13
 UNITS = [100, 1000, 10000]  # 판매가 올림 단위
-COLORS = ["핑크", "옐로우", "화이트", "무도금"]
 
 
 def js_round(x: float) -> float:
@@ -67,6 +66,19 @@ def karat(price_incl, vat_pct, grams, labor, dia, setting, purity_pct, margin_pc
     if raw > MAX_AMOUNT:
         return None
     return {"gold": gold, "cost_incl": cost, "final": ceil_unit(raw, unit)}
+
+
+def karat_excl(price_incl, vat_pct, grams, labor, dia, setting, purity_pct, margin_pct, unit, white_incl=0):
+    """10K·14K·18K 판매가 · 부가세 별도.
+    판매가 = 올림((금 + 공임 + 알값 + 셋팅비) ÷ (1 − 마진) + 화이트 추가금 ÷ (1 + 부가세))
+    화이트 추가금은 부가세 포함 금액으로 봄 (포함 판매가에는 그대로 더함). 계산할 수 없으면 None."""
+    r = karat(price_incl, vat_pct, grams, labor, dia, setting, purity_pct, margin_pct, unit)
+    if r is None or white_incl < 0:
+        return None
+    v = vat_pct / 100
+    gold = price_incl / (1 + v) * (grams / GPD) * (purity_pct / 100)
+    raw = (gold + labor + dia + setting) / (1 - margin_pct / 100) + white_incl / (1 + v)
+    return ceil_unit(raw, unit)
 
 
 def pure(price_incl, vat_pct, grams, ring, labor, unit):

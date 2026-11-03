@@ -117,12 +117,19 @@ texts = [x.text() for x in w.findChildren(QLabel)] + [x.text() for x in w.findCh
 holders = [x.placeholderText() for x in w.findChildren(QLineEdit)]
 for word in ("검색", "코드", "상품명", "상호", "품목"):
     check(f"'{word}' 칸 없음", not any(t.strip() == word or t.startswith(word + " ") for t in texts) and not any(word in h for h in holders))
+check("'공임' 이름 (공통 공임 아님)", "공임 (부가세 별도)" in texts and "공통 공임 (부가세 별도)" not in texts)
+check("색상 고르기 없음, 화이트 체크만", not any(t in texts for t in ("색상", "핑크", "옐로우", "무도금")) and w.k_white.text() == "화이트")
 for word in ("저장", "삭제"):
     check(f"'{word}' 버튼 없음", word not in [b.text() for b in w.findChildren(QPushButton)])
 
 exp = {k: core.karat(731000, 10, 3.75, 50000, 0, 0, p, 30, 100) for k, p in (("10", 41.7), ("14", 58.5), ("18", 75))}
-for k in exp:
-    check(f"{k}K 기본값 판매가", w.krows[k][3].text() == core.won(exp[k]["final"]), (w.krows[k][3].text(), exp[k]["final"]))
+for k, p in (("10", 41.7), ("14", 58.5), ("18", 75)):
+    check(f"{k}K 기본값 판매가 · 포함", w.krows[k][4].text() == core.won(exp[k]["final"]), (w.krows[k][4].text(), exp[k]["final"]))
+    x = core.karat_excl(731000, 10, 3.75, 50000, 0, 0, p, 30, 100)
+    check(f"{k}K 기본값 판매가 · 별도", w.krows[k][3].text() == core.won(x), (w.krows[k][3].text(), x))
+    raw_x = (731000 / 1.1 * (3.75 / 3.75) * (p / 100) + 50000) / 0.7
+    check(f"{k}K 별도 = 올림((금+공임) ÷ (1−마진))", x == -(-round(raw_x * 1e6) / 1e6 // 100) * 100, (x, raw_x))
+    check(f"{k}K 별도 × 1.1 ≈ 포함", abs(x * 1.1 - exp[k]["final"]) <= 110, (x, exp[k]["final"]))
 pp = core.pure(731000, 10, 3.75, 0, 50000, 100)
 check("순금 4칸", [w.pcells[x].text() for x in ("p1x", "p1i", "p2x", "p2i")] == [core.won(pp[x]) for x in ("x1", "i1", "x2", "i2")])
 check("부가세 별도", w.o_base.text() == core.won(731000 / 1.1))
@@ -133,21 +140,27 @@ check("수동 시세", w.price == 598000 and w.source == "manual" and w.o_status
 
 # 돈 입력 → g (계산은 원래 값), 화이트 추가금, 알값·셋팅비, 1,000원 올림
 w.f["ad"].setText("1.333")
-w.k_color.setCurrentIndex(w.k_color.findData("화이트"))
+w.k_white.setChecked(True)
 w.f["dia"].setText("30,000")
 w.f["set"].setText("15000")
 w.f_unit.setCurrentIndex(1)
 pump(50)
 check("돈 → g 표시", w.f["ag"].text() == "5.00" and abs(w.ag_exact - 1.333 * 3.75) < 1e-12, (w.f["ag"].text(), w.ag_exact))
 e = core.karat(598000, 10, 1.333 * 3.75, 50000, 30000, 15000, 58.5, 30, 1000)
-check("14K 화이트 판매가", w.krows["14"][3].text().startswith(core.won(e["final"] + 20000)), w.krows["14"][3].text())
+check("14K 화이트 판매가 · 포함 (+20,000)", w.krows["14"][4].text().startswith(core.won(e["final"] + 20000)), w.krows["14"][4].text())
+ex = core.karat_excl(598000, 10, 1.333 * 3.75, 50000, 30000, 15000, 58.5, 30, 1000, 20000)
+check("14K 화이트 판매가 · 별도 (+20,000÷1.1)", w.krows["14"][3].text().startswith(core.won(ex)) and "화이트 +18,182 포함" in w.krows["14"][3].text(), w.krows["14"][3].text())
+w.k_white.setChecked(False)
+pump(50)
+check("화이트 해제하면 추가금 빠짐", w.krows["14"][4].text() == core.won(e["final"]), w.krows["14"][4].text())
+w.k_white.setChecked(True)
 w.f["m14"].setText("100")
 pump(50)
-check("마진 100% → 빨간 칸", w.f["m14"].property("invalid") == "true" and w.krows["14"][3].text() == "입력 확인")
+check("마진 100% → 빨간 칸", w.f["m14"].property("invalid") == "true" and w.krows["14"][4].text() == "입력 확인" and w.krows["14"][3].text() == "-")
 w.f["m14"].setText("30")
 w.kchk["10"].setChecked(False)
 pump(50)
-check("10K 숨김", not w.krows["10"][3].isVisible() and w.krows["14"][3].isVisible())
+check("10K 숨김", not w.krows["10"][4].isVisible() and w.krows["14"][4].isVisible())
 w.f["pg"].setText("11.25")
 pump(50)
 check("순금 g → 돈", w.f["pd"].text() == "3.00")
@@ -162,6 +175,9 @@ check("설정 저장", s.get("dia") == "30,000" and s.get("show10") == "0" and s
 w2 = ui.MainWindow()
 check("다시 열면 복원", w2.f["dia"].text() == "30,000" and not w2.kchk["10"].isChecked() and w2.f_unit.currentIndex() == 1 and w2.i_price.text() == "598,000")
 check("최소 너비 안에서 가로로 안 잘림", w2.minimumWidth() <= 1100, w2.minimumWidth())
+w2.k_white.setChecked(True)
+w2.clear_section("k")
+check("초기화하면 화이트 체크 해제", not w2.k_white.isChecked() and w2.f["al"].text() == "")
 check("버전 표시", w2.ver.text() == "v" + __import__("jinju_cal").__version__)
 w2.close()
 
