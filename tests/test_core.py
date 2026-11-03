@@ -48,14 +48,10 @@ def py_call(c):
         return core.commas(*a)
     if f == "fixed2":
         return core.fixed2(*a)
-    if f == "initials":
-        return core.initials(*a)
-    if f == "matchProduct":
-        return core.match_product(*a)
     if f == "parseAPI":
         try:
             return core.parse_api(a[0])
-        except core.QuoteError as e:
+        except core.PriceError as e:
             return {"err": str(e)}
     raise ValueError(f)
 
@@ -92,11 +88,6 @@ def gen(rnd, n):
     for s in ["", "12,345", "1.2.3", ".", "5.", ".5", "abc", "3.75g", "  612,000원 ", "１２", "0", "1e5", "-30", None, "00012"]:
         for ab in (True, False):
             cases.append({"f": "parseNum", "a": [s, ab]})
-    names = ["고리 반지", "체인 팔찌", "Ring A", "  이니셜 목걸이 ", "하트펜던트"]
-    for q in ["", "ㄱㄹ", "반지", "ring", "ㅊㅇ ㅍ", "R-1", "이니셜", "ㅎㅌ", "xyz"]:
-        for nm in names:
-            cases.append({"f": "matchProduct", "a": [q, "R-1", nm]})
-    cases.append({"f": "initials", "a": ["가나다 abc 힣"]})
     apis = [
         {"data": {"officialPrice4": {"s_pure": "612,000", "p_pure": 530000, "date": "2026-11-03"}}},
         {"officialPrice4": [{"s_pure": 612000, "p_pure": "530,000", "regDate": 20261103}]},

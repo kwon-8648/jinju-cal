@@ -1,10 +1,10 @@
 # 상품가격계산기 (jinju-cal)
 
-매장관리 웹(gold-cal)의 **계산 방식을 그대로** 쓰는 PC 전용 프로그램입니다. 윈도우와 맥에서 같은 화면·같은 색으로 동작하고, 자료는 **그 PC에만** 저장됩니다.
+매장관리 웹(gold-cal) 계산기 탭의 **계산 방식을 그대로** 쓰는 PC 전용 계산기입니다. 윈도우와 맥에서 같은 화면·같은 색으로 동작하고, 자료는 **그 PC에만** 저장됩니다.
 
 ## 내려받기
 
-[Releases](../../releases) 에서 최신 버전을 받습니다. `main` 에 올릴 때마다 GitHub Actions 가 자동으로 만들어 올립니다.
+[Releases](../../releases) 에서 최신 버전을 받습니다. `main` 에 올리면 테스트만 돌고, 프로그램은 Actions 의 **build → Run workflow** 로 실행할 때만 만들어 올립니다.
 
 - **윈도우**: `jinju-cal-버전-windows.exe` 를 받아 실행합니다. "Windows의 PC 보호" 창이 뜨면 *추가 정보 → 실행*을 누릅니다.
 - **맥 (애플 실리콘)**: `jinju-cal-버전-mac.dmg` 를 열고 앱을 *응용 프로그램* 폴더로 끌어 넣습니다. 처음 한 번은 앱을 **오른쪽 클릭 → 열기**로 엽니다. 열리지 않으면 터미널에서 `xattr -cr /Applications/상품가격계산기.app` 을 실행한 뒤 다시 엽니다.
@@ -15,8 +15,7 @@
 - 기준값: 부가세율, 10K·14K·18K 함량, 화이트골드 추가금, 판매가 올림 단위 (100원 · 1,000원 · 10,000원)
 - **10K·14K·18K 상품**: 중량(g·돈 자동 환산), 공임, 랩다이아 알값, 다이아 셋팅비, 캐럿별 마진 → 금 원가 · 공임 포함 원가 · 최종 판매가. 색상이 화이트면 추가금을 더합니다.
 - **순금 상품**: 중량, 고리 금액, 개별공임 → 공임 1배·2배, 부가세 별도·포함
-- 상품 저장·검색(코드·이름·상호·**초성**)·삭제
-- 자료 메뉴: 상품 내보내기·가져오기 (예전 상품가격계산기 `#v2` 파일, 매장관리 웹 전체 백업 `.json` 모두 됨), 가져오기 되돌리기, 글자 크기 (Ctrl + / Ctrl −), 저장 폴더 열기
+- 검색·코드·상품명·상호·품목·저장·삭제 없이 계산만 합니다 (1.1.0부터).
 - 화면 오른쪽 아래에 버전이 표시됩니다.
 
 ## 계산식 (매장관리 웹과 같음)
@@ -33,7 +32,7 @@
 - 윈도우: `%APPDATA%\JinjuCal\`
 - 맥: `~/Library/Application Support/JinjuCal/`
 
-`settings.json`(기준값·마지막 시세·창 크기), `products.json`(상품 목록), `backups/`(가져오기 직전 상품 목록 30개)
+`settings.json`(기준값·마지막 시세·창 크기)
 
 ## 개발
 
@@ -41,8 +40,8 @@
 pip install -r requirements.txt
 python run.py                 # 실행
 python tests/test_core.py     # 웹판과 계산 대조 (node 필요)
-python tests/test_ui.py       # 화면 동작
+python tests/test_ui.py       # 화면·시세 조회 동작
 pyinstaller --noconfirm jinju-cal.spec   # 빌드
 ```
 
-새 버전을 낼 때는 `jinju_cal/__init__.py` 의 `__version__` 을 올리고 `main` 에 올립니다.
+새 버전을 낼 때는 `jinju_cal/__init__.py` 의 `__version__` 을 올리고 `main` 에 올린 뒤, Actions 에서 build 를 실행합니다.
