@@ -1,0 +1,84 @@
+# main 에 올릴 때마다: 계산 대조 테스트 → 윈도우 .exe · 맥 .dmg 빌드 → Releases 에 "v버전" 으로 올림
+# (같은 버전이면 파일만 새로 바꿔 끼움. 버전은 jinju_cal/__init__.py 의 __version__)
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Qt 화면 없이 실행에 필요한 것
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 fonts-noto-cjk
+      - run: pip install -r requirements.txt
+      - name: 웹판 계산과 대조
+        run: python tests/test_core.py
+      - name: 화면 동작
+        env: { QT_QPA_PLATFORM: offscreen }
+        run: python tests/test_ui.py
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pyinstaller==6.16.0
+      - run: pyinstaller --noconfirm jinju-cal.spec
+      - name: 이름 정리
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path jinju_cal/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item "dist/상품가격계산기.exe" "out/상품가격계산기-$v-windows.exe"
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: out/* }
+
+  mac:
+    needs: test
+    runs-on: macos-14   # 애플 실리콘(M1 이후)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt pyinstaller==6.16.0
+      - run: pyinstaller --noconfirm jinju-cal.spec
+      - name: dmg 만들기
+        run: |
+          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
+          mkdir -p out dmg
+          cp -R "dist/상품가격계산기.app" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "상품가격계산기" -srcfolder dmg -ov -format UDZO "out/상품가격계산기-$v-mac.dmg"
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: out/* }
+
+  release:
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: files, merge-multiple: true }
+      - name: Releases 에 올리기
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
+          ls -la files
+          if gh release view "v$v" >/dev/null 2>&1; then
+            gh release upload "v$v" files/* --clobber
+          else
+            gh release create "v$v" files/* --title "상품가격계산기 $v" --notes "윈도우: .exe 를 내려받아 실행 · 맥: .dmg 를 열고 앱을 응용 프로그램 폴더로 끌어 넣기 (처음 한 번은 앱을 오른쪽 클릭 → 열기)"
+          fi
