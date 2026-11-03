@@ -545,7 +545,7 @@ class MainWindow(QMainWindow):
                 gl.setText(won(r["gold"]))
                 cl.setText(won(r["cost_incl"]))
                 x = karat_excl(self.price, vat, g, labor, dia, setv, pct, m, unit, kx)
-                fx.setText(won(x) + (small(f"화이트 +{commas(kx / (1 + vat / 100))} 포함") if kx else ""))
+                fx.setText(won(x) + (small(f"화이트 +{commas(kx)} 포함") if kx else ""))
                 fl.setText(won(r["final"] + kx) + (small(f"화이트 +{commas(kx)} 포함") if kx else ""))
                 fx.setToolTip("")
                 fl.setToolTip("")
