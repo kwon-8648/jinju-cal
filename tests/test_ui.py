@@ -32,16 +32,46 @@ def pump(ms=200):
 
 
 # ---------------------------------------------------------------- 시세 조회 (가짜 서버)
-SAMPLE = {"data": {"officialPrice4": [{"s_pure": "612,000", "p_pure": "540,000", "date": "2026-11-03 09:30"}]}}
+# 2026-10-31 실제 /api/main 응답 중 officialPrice4 부분 (s_pure = 내가 살 때)
+SAMPLE = {"date": "2026-10-31 15:40:50", "officialPrice4": {
+    "date": "2026-10-31 08:45:57", "s_pure": 731000, "p_pure": 626000,
+    "s_silver": 8860, "p_silver": 7530, "s_white": 268000, "p_white": 217000}}
+SITE = {"mode": "xrw", "calls": []}  # xrw: X-Requested-With POST 만 / csrf: 토큰+쿠키까지 / down: 모두 실패
 
 
 class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        body = json.dumps(SAMPLE).encode() if self.path == "/ok" else b"{}"
-        self.send_response(200 if self.path != "/500" else 500)
+    def _json(self, code, obj=None):
+        body = json.dumps(obj if obj is not None else {"error": code}).encode()
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self):
+        SITE["calls"].append(("GET", self.path))
+        if self.path == "/":
+            body = b'<html><head><meta name="csrf-token" content="TOKEN123"></head></html>'
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Set-Cookie", "XSRF=abc; Path=/")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/relay":
+            self._json(200, SAMPLE) if SITE["mode"] != "down" else self._json(405)
+        else:
+            self._json(405)  # 바뀐 사이트: GET 거부
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(n)
+        SITE["calls"].append(("POST", self.path, self.headers.get("X-CSRF-TOKEN")))
+        if SITE["mode"] == "down" or self.headers.get("X-Requested-With") != "XMLHttpRequest":
+            return self._json(403 if SITE["mode"] != "down" else 503)
+        if SITE["mode"] == "csrf" and not (self.headers.get("X-CSRF-TOKEN") == "TOKEN123" and "XSRF=abc" in (self.headers.get("Cookie") or "")):
+            return self._json(403)
+        self._json(200, SAMPLE)
 
     def log_message(self, *a):
         pass
@@ -50,19 +80,21 @@ class H(http.server.BaseHTTPRequestHandler):
 srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 base_url = f"http://127.0.0.1:{srv.server_port}"
-q = price.fetch_quote(base_url + "/ok")
-check("시세 응답 읽기", q["buy"] == 612000 and q["date"] == "2026-11-03 09:30", q)
-q = price.fetch_any([base_url + "/500", base_url + "/ok"])
-check("첫 주소 실패 → 다음 주소", q["buy"] == 612000, q)
+price.KGX_BASE, price.RELAY_URL = base_url, base_url + "/relay"
+
+q = price.fetch_koreagoldx()
+check("금거래소: X-Requested-With POST 로 시세 받음", q["buy"] == 731000 and q["date"] == "2026-10-31 08:45:57", q)
+check("첫 요청이 POST", SITE["calls"][0][0] == "POST", SITE["calls"][:2])
+SITE.update(mode="csrf", calls=[])
+q = price.fetch_koreagoldx()
+check("토큰이 필요하면 홈페이지 토큰·쿠키로 다시", q["buy"] == 731000 and ("POST", "/api/main", "TOKEN123") in SITE["calls"], SITE["calls"])
+SITE.update(mode="down", calls=[])
 try:
-    price.fetch_any([base_url + "/500", "http://127.0.0.1:1/x"])
+    price.fetch_any()
     check("모두 실패하면 오류", False)
 except core.PriceError as e:
-    check("모두 실패하면 주소마다 원인", str(e) == "금거래소: HTTP 500 / 중계: 서버가 접속을 거부함", e)
-try:
-    price.fetch_quote(base_url + "/empty")
-except core.PriceError as e:
-    check("시세 항목 없는 응답", str(e) == "officialPrice4 항목이 없습니다", e)
+    check("모두 실패하면 방식마다 원인", str(e) == "금거래소 POST HTTP 503, POST+토큰 HTTP 503, GET HTTP 405 / 중계: HTTP 405", e)
+SITE.update(mode="xrw")
 try:
     price.fetch_quote("http://no-such-host.invalid/x", timeout=5)
 except core.PriceError as e:
@@ -72,13 +104,12 @@ except core.PriceError as e:
 app = QApplication([])
 app.setStyle("Fusion")
 app.setStyleSheet(ui.stylesheet())
-price.PRICE_URLS[:] = [base_url + "/ok"]  # 자동조회를 가짜 서버로
 w = ui.MainWindow()
 w.resize(1180, 900)
 w.show()
 pump(1500)
-check("실행 시 자동조회", w.has_price and w.price == 612000 and w.source == "api", w.o_status.text())
-check("상태줄 문구", w.o_status.text().startswith("API 조회 완료") and "제공일 2026-11-03 09:30" in w.o_status.text(), w.o_status.text())
+check("실행 시 자동조회", w.has_price and w.price == 731000 and w.source == "api", w.o_status.text())
+check("상태줄 문구", w.o_status.text().startswith("API 조회 완료") and "제공일 2026-10-31 08:45:57" in w.o_status.text(), w.o_status.text())
 check("10분 자동조회 타이머", w.auto_timer.isActive() and w.auto_timer.interval() == 600000)
 
 # 검색·코드·상품명·상호·품목·저장·삭제가 없어야 함
@@ -89,12 +120,12 @@ for word in ("검색", "코드", "상품명", "상호", "품목"):
 for word in ("저장", "삭제"):
     check(f"'{word}' 버튼 없음", word not in [b.text() for b in w.findChildren(QPushButton)])
 
-exp = {k: core.karat(612000, 10, 3.75, 50000, 0, 0, p, 30, 100) for k, p in (("10", 41.7), ("14", 58.5), ("18", 75))}
+exp = {k: core.karat(731000, 10, 3.75, 50000, 0, 0, p, 30, 100) for k, p in (("10", 41.7), ("14", 58.5), ("18", 75))}
 for k in exp:
     check(f"{k}K 기본값 판매가", w.krows[k][3].text() == core.won(exp[k]["final"]), (w.krows[k][3].text(), exp[k]["final"]))
-pp = core.pure(612000, 10, 3.75, 0, 50000, 100)
+pp = core.pure(731000, 10, 3.75, 0, 50000, 100)
 check("순금 4칸", [w.pcells[x].text() for x in ("p1x", "p1i", "p2x", "p2i")] == [core.won(pp[x]) for x in ("x1", "i1", "x2", "i2")])
-check("부가세 별도", w.o_base.text() == core.won(612000 / 1.1))
+check("부가세 별도", w.o_base.text() == core.won(731000 / 1.1))
 
 w.i_price.setText("598,000")
 w.apply_manual()

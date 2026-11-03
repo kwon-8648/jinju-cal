@@ -1,6 +1,13 @@
-"""한국금거래소 '내가 살 때' 시세 조회 (PC 프로그램이라 금거래소에 바로 접속, 안 되면 서울 중계 주소)."""
+"""한국금거래소 '내가 살 때' 시세 조회 (PC 프로그램이라 금거래소에 바로 접속, 안 되면 서울 중계 주소).
+
+2026-10 사이트 변경: /api/main 은 GET 이면 405, X-Requested-With 없는 POST 는 403.
+홈페이지(jQuery $.ajax type:'post')와 같은 방식으로 요청함 — 고금시세계산 v1.15 와 같은 해결.
+응답 형식(officialPrice4)은 그대로.
+"""
 from __future__ import annotations
 
+import http.cookiejar
+import re
 import socket
 import ssl
 import threading
@@ -11,12 +18,14 @@ from PySide6.QtCore import QObject, Signal
 
 from .core import PriceError, parse_api
 
-PRICE_URLS = ["https://www.koreagoldx.co.kr/api/main", "https://gold-cal.web.app/api/price"]
+KGX_BASE = "https://www.koreagoldx.co.kr"
+RELAY_URL = "https://gold-cal.web.app/api/price"  # 매장관리 웹의 서울 중계 (마지막 수단)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "ko-KR,ko;q=0.9",
-    "Referer": "https://www.koreagoldx.co.kr/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 
 
@@ -50,37 +59,81 @@ def _reason(e: BaseException) -> str:
     return f"접속 실패 ({type(r).__name__})"
 
 
-def fetch_quote(url: str, timeout: float = 15.0):
-    req = urllib.request.Request(url, headers=HEADERS)
+def _send(opener, url, method="GET", headers=None, timeout=15.0) -> str:
+    data = b"" if method == "POST" else None
+    req = urllib.request.Request(url, data=data, method=method, headers={**HEADERS, **(headers or {})})
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+        with opener.open(req, timeout=timeout) as resp:
             if resp.status != 200:
                 raise PriceError(f"HTTP {resp.status}")
             try:
-                text = resp.read().decode("utf-8", errors="replace")
+                return resp.read().decode("utf-8", errors="replace")
             except Exception:
                 raise PriceError("응답이 중간에 끊김")
     except PriceError:
         raise
     except Exception as e:
         raise PriceError(_reason(e))
-    return parse_api(text)
 
 
-SOURCE_NAMES = ["금거래소", "중계"]
+def _opener():
+    """쿠키를 이어 쓰는 연결 (보안 토큰을 받은 뒤 다시 요청할 때 필요)."""
+    return urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+        urllib.request.HTTPSHandler(context=_ssl_context()))
 
 
-def fetch_any(urls=None):
-    """주소를 차례로 시도. 모두 실패하면 주소마다의 실패 원인을 함께 알려 줌."""
-    urls = urls or PRICE_URLS
+def _csrf_token(html: str):
+    m = re.search(r"""<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)""", html)
+    if not m:
+        m = re.search(r"""<meta[^>]+content=["']([^"']+)["'][^>]+name=["']csrf-token""", html)
+    return m.group(1) if m else None
+
+
+def fetch_koreagoldx(base_url: str = None, timeout: float = 15.0):
+    """금거래소에 홈페이지와 같은 방식으로 요청. 방식마다 실패 원인을 모아 알려 줌."""
+    base_url = (base_url or KGX_BASE).rstrip("/")
+    home, api = base_url + "/", base_url + "/api/main"
+    opener = _opener()
+    site = {"Referer": home, "Origin": base_url, "X-Requested-With": "XMLHttpRequest"}
+    form = {"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"}
+
+    def with_token():
+        page = _send(opener, home, headers={"Accept": "text/html,*/*"}, timeout=timeout)
+        token = _csrf_token(page)
+        if not token:
+            raise PriceError("보안 토큰 없음")
+        return _send(opener, api, "POST", {**site, **form, "X-CSRF-TOKEN": token}, timeout)
+
+    steps = [
+        ("POST", lambda: _send(opener, api, "POST", {**site, **form}, timeout)),
+        ("POST+토큰", with_token),
+        ("GET", lambda: _send(opener, api, "GET", {"Referer": home}, timeout)),
+    ]
     errs = []
-    for i, url in enumerate(urls):
+    for label, send in steps:
         try:
-            return fetch_quote(url)
+            return parse_api(send())
         except PriceError as e:
-            name = SOURCE_NAMES[i] if i < len(SOURCE_NAMES) else f"주소 {i + 1}"
-            errs.append(f"{name}: {e}")
-    raise PriceError(" / ".join(errs) or "조회 실패")
+            errs.append(f"{label} {e}")
+    raise PriceError("금거래소 " + ", ".join(errs))
+
+
+def fetch_quote(url: str, timeout: float = 15.0):
+    """주소 하나에 GET 으로 묻기 (중계 주소용)."""
+    return parse_api(_send(_opener(), url, "GET", {"Accept": "application/json"}, timeout))
+
+
+def fetch_any():
+    """금거래소 → 안 되면 중계. 둘 다 실패하면 각각의 원인을 함께 알려 줌."""
+    try:
+        return fetch_koreagoldx()
+    except PriceError as e1:
+        first = str(e1)
+    try:
+        return fetch_quote(RELAY_URL)
+    except PriceError as e2:
+        raise PriceError(f"{first} / 중계: {e2}")
 
 
 class PriceFetcher(QObject):
