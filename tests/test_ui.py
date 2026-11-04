@@ -136,9 +136,12 @@ check("금값 칸", w.krows["14"][1].text() == core.won(r14["gold"]), w.krows["1
 check("공임 칸 (알값·셋팅비 없음)", w.krows["14"][2].text() == core.won(50000), w.krows["14"][2].text())
 check("매입원가 = 금값 + 공임 (부가세 별도)", w.krows["14"][3].text() == core.won(r14["gold"] + 50000), w.krows["14"][3].text())
 # 10K·14K·18K 1돈 (순금 1돈 × 함량)
-for k, p in (("10", 41.7), ("14", 58.5), ("18", 75)):
+check("1돈 금액: 10K 는 없음 (14K·18K 만)", sorted(w.dons) == ["14", "18"])
+check("1돈 금액 제목", "1돈 금액" in texts and not any("기준값 함량 비율" in t for t in texts))
+for k, p in (("14", 58.5), ("18", 75)):
     cap, v, sub = w.dons[k]
-    check(f"{k}K 1돈", v.text() == core.won(731000 * p / 100) and sub.text() == "부가세 별도 " + core.won(731000 / 1.1 * p / 100) and f"({p:g}%)" in cap.text(), (cap.text(), v.text(), sub.text()))
+    check(f"{k}K 1돈: 부가세 별도가 크게, 포함은 작게", v.text() == core.won(731000 / 1.1 * p / 100) and sub.text() == "부가세 포함 " + core.won(731000 * p / 100)
+          and f"({p:g}%)" in cap.text() and "부가세 별도" in cap.text(), (cap.text(), v.text(), sub.text()))
 # 조회 정보가 제목 줄 오른쪽 끝에
 check("조회 정보는 맨 위 오른쪽", w.o_status.mapTo(w, w.o_status.rect().topRight()).y() < w.o_incl.mapTo(w, w.o_incl.rect().topLeft()).y()
       and w.o_status.mapTo(w, w.o_status.rect().topRight()).x() > w.width() - 80, w.o_status.geometry())

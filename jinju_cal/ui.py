@@ -316,16 +316,16 @@ class MainWindow(QMainWindow):
         pl.addWidget(line)
         drow = QHBoxLayout()
         drow.setSpacing(10)
-        dcap = label("10K · 14K · 18K 1돈\n기준값 함량 비율", "lab")
+        dcap = label("1돈 금액", "lab")
         drow.addWidget(dcap, 0, Qt.AlignVCenter)
         self.dons = {}
-        for k in KARAT_KEYS:
+        for k in ("14", "18"):  # 10K 는 표시하지 않음
             fr = QFrame()
             fr.setObjectName("cell")
             vl = QVBoxLayout(fr)
             vl.setContentsMargins(12, 6, 12, 8)
             vl.setSpacing(1)
-            cap = label(f"{k}K 1돈", "lab")
+            cap = label(f"{k}K 1돈 · 부가세 별도", "lab")
             v = label("-", "donv")
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
             sub = label("", "lab")
@@ -594,14 +594,14 @@ class MainWindow(QMainWindow):
         self.o_incl.setText(won(self.price) if self.has_price else "-")
         self.o_base.setText(won(base(self.price, vat)) if self.has_price and vok else "-")
         # 10K·14K·18K 1돈 = 순금 1돈 × 함량 (부가세 포함 · 별도)
-        for k in KARAT_KEYS:
+        for k in self.dons:
             pct, pok = self.num("p" + k)
             pok = pok and 0 < pct <= 100
             cap, v, sub = self.dons[k]
-            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%)" if pok else f"{k}K 1돈")
+            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%) · 부가세 별도" if pok else f"{k}K 1돈 · 부가세 별도")
             if self.has_price and vok and pok:
-                v.setText(won(self.price * pct / 100))
-                sub.setText("부가세 별도 " + won(base(self.price, vat) * pct / 100))
+                v.setText(won(base(self.price, vat) * pct / 100))  # 부가세 별도가 크게
+                sub.setText("부가세 포함 " + won(self.price * pct / 100))
             else:
                 v.setText("-")
                 sub.setText("함량 확인" if self.has_price and not pok else "")
