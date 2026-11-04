@@ -29,6 +29,38 @@ def light_palette() -> QPalette:
     return p
 
 
+def scale_setting() -> int:
+    """이 컴퓨터에 저장된 화면 크기 (%), 잘못된 값이면 100."""
+    v = str(storage.load().get("scale", "100"))
+    return int(v) if v in ("100", "90", "80", "70") else 100
+
+
+def apply_scale():
+    """화면 크기는 프로그램을 열 때 Qt 배율로 적용 (글자·칸·여백이 함께 줄어듦)."""
+    v = scale_setting()
+    if v == 100:
+        os.environ.pop("QT_SCALE_FACTOR", None)
+    else:
+        os.environ["QT_SCALE_FACTOR"] = f"{v / 100:g}"
+    return v
+
+
+def restart_command():
+    """다시 열 때 실행할 명령 (만든 프로그램이면 그 실행 파일, 개발 중이면 python run.py)."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, os.path.abspath(sys.argv[0])]
+
+
+def relaunch():
+    import subprocess
+    env = dict(os.environ)
+    env.pop("QT_SCALE_FACTOR", None)  # 새로 열리는 쪽이 저장된 화면 크기를 다시 읽음
+    kw = {"start_new_session": True} if sys.platform != "win32" else {"creationflags": 0x00000008 | 0x00000200}
+    subprocess.Popen(restart_command(), env=env, close_fds=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
 def main() -> int:
     if sys.platform == "win32":
         try:  # 작업 표시줄에 이 프로그램 아이콘이 보이게
@@ -36,6 +68,7 @@ def main() -> int:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("JinjuCal.PriceCalculator")
         except Exception:
             pass
+    apply_scale()
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
@@ -68,4 +101,6 @@ def main() -> int:
     win.show()
     code = app.exec()
     lock.unlock()
+    if win.restart_requested:  # 화면 크기를 바꿔 다시 열기
+        relaunch()
     return code

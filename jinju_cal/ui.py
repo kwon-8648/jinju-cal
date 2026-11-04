@@ -56,17 +56,18 @@ def stylesheet():
     QLabel#bigbase {{ font-size:24px; font-weight:700; color:{C['gold']}; }}
     QLabel#status {{ color:{C['muted']}; font-size:13px; }}
     QLabel#status[bad="true"] {{ color:{C['bad']}; }}
+    QLabel#tip {{ color:{C['gold']}; font-size:12px; font-weight:600; }}
     QLabel#ver {{ color:{C['muted']}; font-size:11px; }}
     QLabel#title {{ color:{C['gold']}; font-size:24px; font-weight:800; }}
     QLineEdit {{ background:{C['input']}; border:1px solid {C['input_line']}; border-radius:4px;
-                 padding:5px 8px; min-height:22px; selection-background-color:{C['gold']}; }}
-    QLineEdit:focus {{ border:2px solid {C['gold']}; padding:4px 7px; }}
+                 padding:3px 8px; min-height:20px; selection-background-color:{C['gold']}; }}
+    QLineEdit:focus {{ border:2px solid {C['gold']}; padding:2px 7px; }}
     QLineEdit[invalid="true"] {{ border:1px solid {C['bad']}; background:{C['bad_in']}; }}
     QLineEdit[invalid="true"]:focus {{ border:2px solid {C['bad']}; }}
-    QComboBox {{ background:{C['panel']}; border:1px solid {C['line']}; border-radius:4px; padding:4px 8px; min-height:22px; }}
+    QComboBox {{ background:{C['panel']}; border:1px solid {C['line']}; border-radius:4px; padding:3px 8px; min-height:20px; }}
     QComboBox QAbstractItemView {{ background:{C['panel']}; selection-background-color:{C['soft']}; selection-color:{C['ink']}; }}
     QPushButton {{ background:{C['gold']}; color:{C['gold_ink']}; border:1px solid {C['gold']}; border-radius:4px;
-                   padding:6px 14px; font-weight:600; min-height:22px; }}
+                   padding:4px 14px; font-weight:600; min-height:20px; }}
     QPushButton:hover {{ background:#9a5606; }}
     QPushButton:disabled {{ background:{C['soft']}; color:{C['muted']}; border-color:{C['line']}; }}
     QPushButton#ghost {{ background:transparent; color:{C['gold']}; }}
@@ -80,9 +81,9 @@ def stylesheet():
     QLabel#th {{ color:{C['muted']}; font-size:12px; }}
     QLabel#kk {{ color:{C['gold']}; font-weight:700; font-size:15px; }}
     QLabel#kv {{ font-size:15px; }}
-    QLabel#kfinx {{ font-size:17px; font-weight:700; border:1px solid {C['line']}; border-radius:4px; padding:4px 8px; }}
+    QLabel#kfinx {{ font-size:17px; font-weight:700; border:1px solid {C['line']}; border-radius:4px; padding:2px 8px; }}
     QFrame#vline {{ background:{C['line']}; border:none; }}
-    QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:4px 8px; }}
+    QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:2px 8px; }}
     QFrame#cell {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellx {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellincl {{ border:1px solid {C['line']}; border-radius:4px; background:{C['soft']}; }}
@@ -96,12 +97,24 @@ def now_sec():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+SCALES = [100, 90, 80, 70]  # 화면 크기 (%)
+
+
+def info_tip(text):
+    """마우스를 올리면 설명이 보이는 작은 ⓘ (화면 높이를 줄이려고 설명 글을 여기에 넣음)."""
+    lb = QLabel("ⓘ 설명")
+    lb.setObjectName("tip")
+    lb.setToolTip(text)
+    lb.setCursor(Qt.WhatsThisCursor)
+    return lb
+
+
 def card():
     f = QFrame()
     f.setObjectName("card")
     lay = QVBoxLayout(f)
-    lay.setContentsMargins(16, 14, 16, 16)
-    lay.setSpacing(10)
+    lay.setContentsMargins(14, 10, 14, 12)
+    lay.setSpacing(8)
     return f, lay
 
 
@@ -231,6 +244,7 @@ class MainWindow(QMainWindow):
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self.save_settings)
 
+        self.restart_requested = False
         self.update_info = None
         self.update_busy = False
         self.checker = UpdateChecker()
@@ -251,8 +265,8 @@ class MainWindow(QMainWindow):
         page = QWidget()
         page.setObjectName("page")
         root = QVBoxLayout(page)
-        root.setContentsMargins(18, 14, 18, 10)
-        root.setSpacing(14)
+        root.setContentsMargins(14, 10, 14, 8)
+        root.setSpacing(10)
 
         top = QHBoxLayout()
         title = label(APP_NAME, "title")
@@ -324,8 +338,8 @@ class MainWindow(QMainWindow):
             fr = QFrame()
             fr.setObjectName("cell")
             vl = QVBoxLayout(fr)
-            vl.setContentsMargins(12, 6, 12, 8)
-            vl.setSpacing(1)
+            vl.setContentsMargins(12, 4, 12, 5)
+            vl.setSpacing(0)
             cap = label(f"{k}K 1돈 · 부가세 별도", "lab")
             v = label("-", "donv")
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -340,11 +354,17 @@ class MainWindow(QMainWindow):
 
         # --- 아래: 기준값 | 상품 계산
         grid = QHBoxLayout()
-        grid.setSpacing(14)
+        grid.setSpacing(10)
 
         sc, sl = card()
         sc.setFixedWidth(270)
-        sl.addWidget(label("기준값", "h2"))
+        sh_ = QHBoxLayout()
+        sh_.addWidget(label("기준값", "h2"))
+        sh_.addStretch(1)
+        sh_.addWidget(info_tip("노란 칸을 수정하면 자동 계산합니다. 최종 판매가는 선택한 올림 단위로 올립니다.\n"
+                               "g 또는 돈을 넣으면 자동으로 바꿔 보여줍니다 (중량 2자리 / 금액 정수 표시, 계산은 넣은 값 그대로).\n"
+                               "마진율은 올림 전 판매가 기준입니다. 조회·입력 시세는 부가세 포함으로 봅니다."))
+        sl.addLayout(sh_)
         for key, cap, ph in [("vat", "부가세율 %", ""), ("p10", "10K 함량 %", ""), ("p14", "14K 함량 %", ""),
                              ("p18", "18K 함량 %", ""), ("white", "화이트골드 추가금 (원)", "")]:
             fd = Field(cap, ph)
@@ -353,22 +373,21 @@ class MainWindow(QMainWindow):
         uf = ComboField("판매가 올림 단위", [("100원 단위", 0), ("1,000원 단위", 1), ("10,000원 단위", 2)])
         self.f_unit = uf.combo
         sl.addWidget(uf)
-        sl.addWidget(label("노란 칸을 수정하면 자동 계산\n최종 판매가는 선택한 올림 단위로 올림", "note", wrap=True))
-        sl.addWidget(label("g 또는 돈 입력 시 자동 환산 · 중량 2자리 / 금액 정수 표시, 계산은 원래 값 유지.\n\n"
-                           "마진율은 올림 전 판매가 기준 · 조회·입력 시세는 부가세 포함으로 고정합니다.", "note", wrap=True))
         self.b_reset = button("기본값으로 되돌리기", "ghost")
         sl.addWidget(self.b_reset)
         sl.addStretch(1)
         grid.addWidget(sc, 0, Qt.AlignTop)
 
         stack = QVBoxLayout()
-        stack.setSpacing(14)
+        stack.setSpacing(10)
 
         # 10K·14K·18K
         kc, kl = card()
         kh = QHBoxLayout()
         kh.setSpacing(12)
         kh.addWidget(label("10K · 14K · 18K 상품", "h2"))
+        kh.addWidget(info_tip("표의 공임 = 공임 + 랩다이아 알값 + 다이아 셋팅비\n매입원가 = 금값 + 공임 (모두 부가세 별도, 공란은 0원)\n"
+                              "중량·공임은 캐럿 공통, 마진율은 판매가 기준입니다."))
         kh.addStretch(1)
         self.k_white = QCheckBox("화이트 도금")
         self.k_white.setToolTip("체크하면 최종 판매가(별도·포함)에 화이트골드 추가금을 더합니다")
@@ -403,14 +422,12 @@ class MainWindow(QMainWindow):
             r3.addWidget(fd, 0, i)
             r3.setColumnStretch(i, 1)
         kl.addLayout(r3)
-        kl.addWidget(label("표의 공임 = 공임 + 랩다이아 알값 + 다이아 셋팅비, 매입원가 = 금값 + 공임 (모두 부가세 별도, 공란은 0원).\n"
-                           "중량·공임은 캐럿 공통, 마진율은 판매가 기준입니다.", "note", wrap=True))
         self.ktable = QFrame()
         self.ktable.setObjectName("ktable")
         self.kgrid = QGridLayout(self.ktable)
-        self.kgrid.setContentsMargins(12, 10, 12, 10)
+        self.kgrid.setContentsMargins(10, 6, 10, 6)
         self.kgrid.setHorizontalSpacing(14)
-        self.kgrid.setVerticalSpacing(8)
+        self.kgrid.setVerticalSpacing(4)
         heads = ["금종류", "금값\n부가세 별도", "공임\n알값·셋팅비 포함", "매입원가\n부가세 별도", "최종 판매가\n부가세 별도", "최종 판매가\n부가세 포함"]
         for i, h in enumerate(heads):
             lb = label(h, "th")
@@ -447,6 +464,8 @@ class MainWindow(QMainWindow):
         pcard, pcl = card()
         ph = QHBoxLayout()
         ph.addWidget(label("순금 상품", "h2"))
+        ph.addWidget(info_tip("금액은 모두 부가세 별도, 고리 금액 공란은 0원\n매입원가 = 금값 + 고리 + 공임\n"
+                              "최종 판매가 = 금값 + 고리 + 공임×3 (공임 2배, 고리에는 배수 미적용)"))
         ph.addStretch(1)
         self.p_clear = button("초기화", "plain")
         ph.addWidget(self.p_clear)
@@ -464,9 +483,7 @@ class MainWindow(QMainWindow):
             r4.addWidget(fd, 0, i)
             r4.setColumnStretch(i, 1)
         left.addLayout(r4)
-        left.addWidget(label("금액은 모두 부가세 별도 · 고리 금액 공란은 0원\n"
-                             "매입원가 = 금값 + 고리 + 공임 · 최종 판매가 = 금값 + 고리 + 공임×3 (공임 2배, 고리에는 배수 미적용)", "note", wrap=True))
-        left.addStretch(1)
+
         pr.addLayout(left, 1)
         pcl.addLayout(pr)
         cells = QGridLayout()
@@ -478,8 +495,8 @@ class MainWindow(QMainWindow):
             fr = QFrame()
             fr.setObjectName(kind)
             vl = QVBoxLayout(fr)
-            vl.setContentsMargins(12, 8, 12, 10)
-            vl.setSpacing(2)
+            vl.setContentsMargins(12, 5, 12, 6)
+            vl.setSpacing(0)
             vl.addWidget(label(cap, "lab"))
             v = label("-", "cellv")
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -496,6 +513,13 @@ class MainWindow(QMainWindow):
 
         foot = QHBoxLayout()
         foot.addStretch(1)
+        foot.addWidget(label("화면 크기", "ver"))
+        self.f_scale = QComboBox()
+        for v in SCALES:
+            self.f_scale.addItem(f"{v}%", v)
+        self.f_scale.setToolTip("글자와 칸을 함께 줄이거나 늘립니다. 이 컴퓨터에만 저장되고, 프로그램을 다시 열면 적용됩니다.")
+        foot.addWidget(self.f_scale)
+        foot.addSpacing(10)
         self.b_check = button("업데이트 확인", "small")
         foot.addWidget(self.b_check)
         self.ver = label(f"v{__version__}", "ver")
@@ -526,6 +550,7 @@ class MainWindow(QMainWindow):
         self.b_reset.clicked.connect(self.reset_defaults)
         self.k_clear.clicked.connect(lambda: self.clear_section("k"))
         self.b_check.clicked.connect(lambda: self.check_update(quiet=False))
+        self.f_scale.currentIndexChanged.connect(self.on_scale)
         self.b_update.clicked.connect(lambda: self.start_update(self.update_info))
         self.p_clear.clicked.connect(lambda: self.clear_section("p"))
 
@@ -868,6 +893,22 @@ class MainWindow(QMainWindow):
         self.save_settings()
         QApplication.quit()  # 설치 스크립트가 프로그램이 닫히길 기다렸다가 바꾸고 다시 엶
 
+    # ------------------------------------------------------------------ 화면 크기
+    def on_scale(self, *_):
+        if self.loading:
+            return
+        v = self.f_scale.currentData()
+        s = storage.load()
+        if str(s.get("scale", "100")) == str(v):
+            return
+        s["scale"] = str(v)
+        s.pop("window", None)  # 크기가 바뀌면 창 크기는 화면에 맞춰 다시 정함
+        storage.save(s)
+        if self.ask("화면 크기", f"화면 크기를 {v}%로 바꿉니다.\n프로그램을 다시 열어야 적용됩니다. 지금 다시 열까요?\n(기준값과 시세는 그대로입니다)"):
+            self.restart_requested = True
+            self.save_settings()
+            QApplication.quit()
+
     # ------------------------------------------------------------------ 저장
     def load_settings(self):
         self.loading = True
@@ -896,6 +937,8 @@ class MainWindow(QMainWindow):
             self.source = s.get("source", "")
             self.i_price.setText(commas(p))
             self.set_status("저장된 이전 시세 · 최신 조회 아님 / " + self.price_time)
+        sc_ = str(s.get("scale", "100"))
+        self.f_scale.setCurrentIndex(max(0, self.f_scale.findData(int(sc_) if sc_.isdigit() else 100)))
         geo = s.get("window")
         if isinstance(geo, list) and len(geo) == 2:
             try:
@@ -920,7 +963,7 @@ class MainWindow(QMainWindow):
             s["price"] = str(int(round(self.price)))
             s["time"] = self.price_time
             s["source"] = self.source
-        if not self.isMaximized():
+        if not self.isMaximized() and not self.restart_requested:
             s["window"] = [self.width(), self.height()]
         storage.save(s)
 

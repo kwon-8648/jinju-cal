@@ -215,6 +215,34 @@ check("새 버전 있으면 오른쪽 위에 버튼", w.b_update.isVisible() and
 w.start_update(w.update_info)
 check("개발 실행에서는 바꾸지 않고 안내", "만들어진 프로그램" in said[-1], said[-1:])
 
+# 화면 촘촘하게: 설명 글은 ⓘ 에 마우스를 올리면 보임
+from PySide6.QtWidgets import QLabel as _QL
+tips = [x for x in w.findChildren(_QL) if x.objectName() == "tip"]
+check("설명 글은 ⓘ 로 (3곳)", len(tips) == 3 and any("매입원가 = 금값 + 고리 + 공임" in t.toolTip() for t in tips)
+      and any("알값" in t.toolTip() for t in tips) and any("올림 단위" in t.toolTip() for t in tips), [t.toolTip()[:20] for t in tips])
+check("화면에 늘 보이는 긴 설명 글 없음", not any(x.objectName() == "note" and x.isVisible() for x in w.findChildren(_QL)))
+h = w.centralWidget().widget().sizeHint().height()
+check("화면 높이 줄어듦 (예전 약 1,100)", h <= 900, h)
+
+# 화면 크기
+from jinju_cal import app as appmod
+check("화면 크기 기본 100%", w.f_scale.currentData() == 100 and [w.f_scale.itemData(i) for i in range(w.f_scale.count())] == [100, 90, 80, 70])
+quits = []
+_q = ui.QApplication.quit
+ui.QApplication.quit = lambda: quits.append(1)
+w.ask = lambda t, m: False
+w.f_scale.setCurrentIndex(2)  # 80%
+check("화면 크기 저장 (지금 다시 열기 '아니요')", storage.load().get("scale") == "80" and not quits and not w.restart_requested)
+check("다음에 열 때 80% 적용", appmod.apply_scale() == 80 and os.environ.get("QT_SCALE_FACTOR") == "0.8")
+w.ask = lambda t, m: True
+w.f_scale.setCurrentIndex(3)  # 70%, '예' → 다시 열기
+check("'예' 누르면 다시 열기 요청", storage.load().get("scale") == "70" and quits and w.restart_requested and "window" not in storage.load())
+check("다시 열 명령 (개발 실행)", appmod.restart_command()[0] == sys.executable)
+ui.QApplication.quit = _q
+w.restart_requested = False
+w.f_scale.setCurrentIndex(0)
+check("100%로 되돌리면 배율 없음", storage.load().get("scale") == "100" and appmod.apply_scale() == 100 and "QT_SCALE_FACTOR" not in os.environ)
+
 w.close()
 pump(50)
 s = storage.load()
