@@ -29,14 +29,9 @@ jobs:
           echo "== 실행 파일"; ls -la "$APP/Contents/MacOS" | head; plutil -p "$APP/Contents/Info.plist" | head -30
           echo "== 이름에 한글/공백 있는 파일"; find "$APP" | LC_ALL=C grep -n '[^ -~]' | head -20
           echo "== Mach-O 개수"; find "$APP" -type f -exec file {} + | grep -c Mach-O
-          echo "== 9) scripts/mac_sign.sh"
-          cp -R "$APP" /tmp/A9.app; bash scripts/mac_sign.sh /tmp/A9.app; echo "sign rc=$?"
-          codesign -dv /tmp/A9.app 2>&1 | grep -E 'Sealed|Info.plist|Signature'
-          mkdir -p /tmp/d9 && cp -R /tmp/A9.app "/tmp/d9/상품가격계산기.app" && hdiutil create -volname t -srcfolder /tmp/d9 -ov -format UDZO /tmp/t9.dmg -quiet
-          m=$(mktemp -d); hdiutil attach /tmp/t9.dmg -mountpoint "$m" -nobrowse -quiet; codesign --verify --deep --strict "$m/상품가격계산기.app"; echo "dmg verify rc=$?"
-          # 인터넷에서 받은 것처럼 표시해 Gatekeeper 판정 보기
-          cp -R "$m/상품가격계산기.app" /tmp/Q.app; hdiutil detach "$m" -quiet
-          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" /tmp/Q.app
-          spctl -a -vv -t exec /tmp/Q.app 2>&1 | head -3; syspolicy_check distribution /tmp/Q.app 2>&1 | head -8
-          QT_QPA_PLATFORM=offscreen /tmp/A9.app/Contents/MacOS/상품가격계산기 & p=$!; sleep 8; kill -0 $p && echo "running OK" || echo "exited"; kill $p 2>/dev/null
+          echo "== 10)"
+          cp -R "$APP" /tmp/A10.app; find /tmp/A10.app -name '*.cstemp'; bash scripts/mac_sign.sh /tmp/A10.app >/dev/null 2>&1; echo "sign rc=$?"
+          python scripts/check_seal.py /tmp/A10.app | head -40
+          codesign --verify --strict -vvvv /tmp/A10.app 2>&1 | grep -v -e '--prepared' -e '--validated' | head
+          codesign --verify --strict --no-strict -vvvv /tmp/A10.app 2>&1 | grep -v -e '--prepared' -e '--validated' | tail -3
           echo "== 끝"
