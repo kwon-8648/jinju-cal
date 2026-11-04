@@ -84,6 +84,7 @@ def stylesheet():
     QFrame#vline {{ background:{C['line']}; border:none; }}
     QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:4px 8px; }}
     QFrame#cell {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
+    QFrame#cellx {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellincl {{ border:1px solid {C['line']}; border-radius:4px; background:{C['soft']}; }}
     QLabel#donv {{ font-size:17px; font-weight:700; }}
     QLabel#cellv {{ font-size:18px; font-weight:700; }}
@@ -289,7 +290,7 @@ class MainWindow(QMainWindow):
 
         prow = QHBoxLayout()
         prow.setSpacing(24)
-        for attr, cap, name in [("o_incl", "부가세 포함 가격", "big"), ("o_base", "부가세 별도 가격 · 계산 기준", "bigbase")]:
+        for attr, cap, name in [("o_base", "부가세 별도 가격 · 계산 기준", "bigbase"), ("o_incl", "부가세 포함 가격", "big")]:
             box = QVBoxLayout()
             box.setSpacing(2)
             box.addWidget(label(cap, "lab"))
@@ -463,17 +464,19 @@ class MainWindow(QMainWindow):
             r4.addWidget(fd, 0, i)
             r4.setColumnStretch(i, 1)
         left.addLayout(r4)
-        left.addWidget(label("금액은 모두 부가세 별도 · 고리 금액 공란은 0원 · 공임 배수는 고리 금액에 미적용\n"
-                             "공임 1배 = 공임×2, 공임 2배 = 공임×3", "note", wrap=True))
+        left.addWidget(label("금액은 모두 부가세 별도 · 고리 금액 공란은 0원\n"
+                             "매입원가 = 금값 + 고리 + 공임 · 최종 판매가 = 금값 + 고리 + 공임×3 (공임 2배, 고리에는 배수 미적용)", "note", wrap=True))
         left.addStretch(1)
-        pr.addLayout(left, 3)
+        pr.addLayout(left, 1)
+        pcl.addLayout(pr)
         cells = QGridLayout()
         cells.setSpacing(8)
         self.pcells = {}
-        for i, (key, cap, incl) in enumerate([("p1x", "공임 1배 · 부가세 별도", False), ("p1i", "공임 1배 · 부가세 포함", True),
-                                              ("p2x", "공임 2배 · 부가세 별도", False), ("p2i", "공임 2배 · 부가세 포함", True)]):
+        # (매입원가, 최종 판매가 별도, 최종 판매가 포함) — 잡금 결과표와 같은 이름
+        for i, (key, cap, kind) in enumerate([("cost", "매입원가 · 부가세 별도", "cell"), ("finx", "최종 판매가 · 부가세 별도", "cellx"),
+                                              ("fin", "최종 판매가 · 부가세 포함", "cellincl")]):
             fr = QFrame()
-            fr.setObjectName("cellincl" if incl else "cell")
+            fr.setObjectName(kind)
             vl = QVBoxLayout(fr)
             vl.setContentsMargins(12, 8, 12, 10)
             vl.setSpacing(2)
@@ -482,9 +485,9 @@ class MainWindow(QMainWindow):
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
             vl.addWidget(v)
             self.pcells[key] = v
-            cells.addWidget(fr, i // 2, i % 2)
-        pr.addLayout(cells, 2)
-        pcl.addLayout(pr)
+            cells.addWidget(fr, 0, i)
+            cells.setColumnStretch(i, 1)
+        pcl.addLayout(cells)
         stack.addWidget(pcard)
         stack.addStretch(1)
 
@@ -684,8 +687,10 @@ class MainWindow(QMainWindow):
         pl, plok = self.num("pl", True)
         bad("pl", not plok)
         pr = pure(self.price, vat, pg, ring, pl, unit) if (self.has_price and vok and pgok and rok and plok) else None
-        for key, rk in (("p1x", "x1"), ("p1i", "i1"), ("p2x", "x2"), ("p2i", "i2")):
-            self.pcells[key].setText(won(pr[rk]) if pr else "-")
+        # 매입원가 = 금값 + 고리 + 공임 (부가세 별도) · 최종 판매가 = 공임 2배 (별도·포함)
+        self.pcells["cost"].setText(won(self.price / (1 + vat / 100) * pg / GPD + ring + pl) if pr else "-")
+        self.pcells["finx"].setText(won(pr["x2"]) if pr else "-")
+        self.pcells["fin"].setText(won(pr["i2"]) if pr else "-")
 
     # ------------------------------------------------------------------ 시세
     def set_status(self, text, is_bad=False):

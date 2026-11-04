@@ -146,7 +146,11 @@ for k, p in (("14", 58.5), ("18", 75)):
 check("조회 정보는 맨 위 오른쪽", w.o_status.mapTo(w, w.o_status.rect().topRight()).y() < w.o_incl.mapTo(w, w.o_incl.rect().topLeft()).y()
       and w.o_status.mapTo(w, w.o_status.rect().topRight()).x() > w.width() - 80, w.o_status.geometry())
 pp = core.pure(731000, 10, 3.75, 0, 50000, 100)
-check("순금 4칸", [w.pcells[x].text() for x in ("p1x", "p1i", "p2x", "p2i")] == [core.won(pp[x]) for x in ("x1", "i1", "x2", "i2")])
+check("순금: 매입원가·판매가 별도·포함 세 칸만", sorted(w.pcells) == ["cost", "fin", "finx"])
+check("순금 매입원가 = 금값 + 고리 + 공임", w.pcells["cost"].text() == core.won(731000 / 1.1 * 3.75 / 3.75 + 0 + 50000), w.pcells["cost"].text())
+check("순금 최종 판매가 = 공임 2배 (별도·포함)", w.pcells["finx"].text() == core.won(pp["x2"]) and w.pcells["fin"].text() == core.won(pp["i2"]), (w.pcells["finx"].text(), w.pcells["fin"].text()))
+check("공임 1배 칸 없음", not any("공임 1배" in t for t in texts))
+check("맨 위: 부가세 별도가 먼저", w.o_base.mapTo(w, w.o_base.rect().topLeft()).x() < w.o_incl.mapTo(w, w.o_incl.rect().topLeft()).x())
 check("부가세 별도", w.o_base.text() == core.won(731000 / 1.1))
 
 w.i_price.setText("598,000")
@@ -185,10 +189,14 @@ pump(50)
 check("10K 숨김", not w.krows["10"][5].isVisible() and w.krows["14"][5].isVisible())
 w.f["pg"].setText("11.25")
 pump(50)
+w.f["ring"].setText("20000")
+pump(50)
+pp2 = core.pure(598000, 10, 11.25, 20000, 50000, 1000)
+check("순금 고리 넣으면 매입원가·판매가에 반영", w.pcells["cost"].text() == core.won(598000 / 1.1 * 11.25 / 3.75 + 20000 + 50000) and w.pcells["fin"].text() == core.won(pp2["i2"]), (w.pcells["cost"].text(), w.pcells["fin"].text()))
 check("순금 g → 돈", w.f["pd"].text() == "3.00")
 
 w.clear_section("p")
-check("순금 초기화", all(w.f[k].text() == "" for k in ("pg", "pd", "ring", "pl")) and w.pcells["p1x"].text() == "-")
+check("순금 초기화", all(w.f[k].text() == "" for k in ("pg", "pd", "ring", "pl")) and w.pcells["finx"].text() == "-" and w.pcells["cost"].text() == "-")
 # 업데이트 버튼
 said = []
 w.say = lambda t, m: said.append(m)
