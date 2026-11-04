@@ -12,49 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - uses: actions/setup-node@v4
-        with: { node-version: "20" }
-      - name: Qt 화면 없이 실행에 필요한 것
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 fonts-noto-cjk
-      - run: pip install -r requirements.txt
-      - name: 웹판 계산과 대조
-        run: python tests/test_core.py
-      - name: 화면 동작
-        env: { QT_QPA_PLATFORM: offscreen }
-        run: python tests/test_ui.py
-      - name: 업데이트 동작
-        run: python tests/test_update.py
-
-  windows:
-    needs: test
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -r requirements.txt pyinstaller==6.16.0
-      - run: pyinstaller --noconfirm jinju-cal.spec
-      - name: 업데이트 바꿔치기 확인 (실행 중인 exe)
-        run: python tests/test_update_ci.py windows "dist/상품가격계산기.exe"
-      - name: 이름 정리
-        shell: pwsh
-        run: |
-          $v = (Select-String -Path jinju_cal/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
-          New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item "dist/상품가격계산기.exe" "out/jinju-cal-$v-windows.exe"
-      - uses: actions/upload-artifact@v4
-        with: { name: windows, path: out/* }
-
   mac:
-    needs: test
-    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-14   # 애플 실리콘(M1 이후)
     steps:
       - uses: actions/checkout@v4
@@ -62,51 +20,27 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - run: pyinstaller --noconfirm jinju-cal.spec
-      # PyInstaller 의 서명이 실패하면(-10) 앱 서명이 깨져 맥이 "손상된 파일"이라며 막음 → 다시 서명하고 확인
-      - name: 앱 서명 (임시 서명) 및 확인
+      - name: 진단
+        continue-on-error: true
         run: |
+          set +e
           APP="dist/상품가격계산기.app"
-          xattr -cr "$APP"
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-      - name: dmg 만들기
-        run: |
-          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
-          mkdir -p out dmg
-          cp -R "dist/상품가격계산기.app" dmg/
-          ln -s /Applications dmg/Applications
-          hdiutil create -volname "상품가격계산기" -srcfolder dmg -ov -format UDZO "out/jinju-cal-$v-mac.dmg"
-          # dmg 안의 앱도 서명이 그대로인지 확인 (깨졌으면 여기서 멈춰 올리지 않음)
-          mnt=$(mktemp -d)
-          hdiutil attach "out/jinju-cal-$v-mac.dmg" -mountpoint "$mnt" -nobrowse -quiet
-          codesign --verify --deep --strict --verbose=2 "$mnt/상품가격계산기.app"
-          hdiutil detach "$mnt" -quiet
-      - name: 업데이트 바꿔치기 확인 (dmg → 실행 중인 앱)
-        run: |
-          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
-          python tests/test_update_ci.py mac "out/jinju-cal-$v-mac.dmg" "dist/상품가격계산기.app"
-      - uses: actions/upload-artifact@v4
-        with: { name: mac, path: out/* }
-
-  release:
-    needs: [windows, mac]
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { path: files, merge-multiple: true }
-      - name: Releases 에 올리기
-        env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
-          ls -la files
-          if gh release view "v$v" >/dev/null 2>&1; then
-            # 이번에 만든 것과 이름이 다른 예전 파일은 지움
-            for a in $(gh api "repos/${{ github.repository }}/releases/tags/v$v" -q '.assets[] | "\(.id)=\(.name)"'); do
-              [ -e "files/${a#*=}" ] || gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${a%%=*}"
-            done
-            gh release upload "v$v" files/* --clobber
-          else
-            gh release create "v$v" files/* --title "상품가격계산기 $v" --notes "윈도우: .exe 를 내려받아 실행 · 맥: .dmg 를 열고 앱을 응용 프로그램 폴더로 끌어 넣기 (처음 한 번은 앱을 오른쪽 클릭 → 열기)"
-          fi
+          sw_vers; codesign --version 2>&1 || true
+          echo "== 실행 파일"; ls -la "$APP/Contents/MacOS" | head; plutil -p "$APP/Contents/Info.plist" | head -30
+          echo "== 이름에 한글/공백 있는 파일"; find "$APP" | LC_ALL=C grep -n '[^ -~]' | head -20
+          echo "== Mach-O 개수"; find "$APP" -type f -exec file {} + | grep -c Mach-O
+          echo "== 1) 한 파일씩 서명 (안쪽부터)"
+          cp -R "$APP" /tmp/A1.app
+          find /tmp/A1.app/Contents -type f -exec file {} + | grep Mach-O | cut -d: -f1 | awk '{print length, $0}' | sort -rn | cut -d' ' -f2- | while IFS= read -r f; do
+            codesign --force --sign - "$f" >/tmp/cs.log 2>&1; rc=$?; [ $rc -ne 0 ] && { echo "rc=$rc $f"; cat /tmp/cs.log; }
+          done
+          codesign --force --sign - /tmp/A1.app; echo "bundle rc=$?"
+          codesign --verify --deep --strict --verbose=2 /tmp/A1.app; echo "verify rc=$?"
+          echo "== 2) 영문 이름 앱으로 --deep"
+          cp -R "$APP" /tmp/JinjuCal.app
+          codesign --force --deep --sign - /tmp/JinjuCal.app; echo "deep ascii rc=$?"
+          echo "== 3) 원래 이름 --deep (xattr 지운 뒤)"
+          cp -R "$APP" "/tmp/상품가격계산기.app"; xattr -cr "/tmp/상품가격계산기.app"
+          codesign --force --deep --sign - "/tmp/상품가격계산기.app"; echo "deep korean rc=$?"
+          echo "== 4) --deep 없이 번들만"
+          cp -R "$APP" /tmp/A4.app; codesign --force --sign - /tmp/A4.app; echo "nodeep rc=$?"; codesign --verify --deep --strict --verbose=2 /tmp/A4.app; echo "verify rc=$?"
