@@ -29,18 +29,12 @@ jobs:
           echo "== 실행 파일"; ls -la "$APP/Contents/MacOS" | head; plutil -p "$APP/Contents/Info.plist" | head -30
           echo "== 이름에 한글/공백 있는 파일"; find "$APP" | LC_ALL=C grep -n '[^ -~]' | head -20
           echo "== Mach-O 개수"; find "$APP" -type f -exec file {} + | grep -c Mach-O
-          echo "== 안쪽 번들"; find "$APP/Contents" \( -name "*.framework" -o -name "*.app" -o -name "*.bundle" -o -name "*.appex" \) -prune | sed "s|$APP/||" | head -40
-          echo "== 서명 기존 상태"; codesign -dv "$APP" 2>&1 | head -8
-          echo "== 5) 파일 → 안쪽 번들(깊은 것부터) → 앱"
-          cp -R "$APP" /tmp/A5.app
-          T=/tmp/A5.app
+          echo "== 8) xattr 지우고 파일→번들→앱, 자세한 확인"
+          cp -R "$APP" /tmp/A8.app; T=/tmp/A8.app; xattr -cr "$T"
           find "$T/Contents" -type f -exec file {} + | grep Mach-O | cut -d: -f1 | while IFS= read -r f; do codesign --force --sign - "$f" >/dev/null 2>&1 || echo "file fail $f"; done
           find "$T/Contents" -type d \( -name "*.framework" -o -name "*.app" -o -name "*.bundle" \) | awk '{print length, $0}' | sort -rn | cut -d' ' -f2- | while IFS= read -r b; do codesign --force --sign - "$b" >/tmp/b.log 2>&1 || { echo "bundle fail $b"; cat /tmp/b.log; }; done
           codesign --force --sign - "$T"; echo "app rc=$?"
-          codesign --verify --deep --strict --verbose=4 "$T" 2>&1 | grep -v -- '--prepared\|--validated' | tail -15; echo "verify rc=${PIPESTATUS[0]}"
-          spctl -a -vv -t exec "$T" 2>&1 | tail -3
-          echo "== 6) 같은 앱을 dmg 로 묶었다 꺼내도 그대로인지"
-          mkdir -p /tmp/dd && cp -R "$T" "/tmp/dd/상품가격계산기.app" && hdiutil create -volname t -srcfolder /tmp/dd -ov -format UDZO /tmp/t.dmg -quiet
-          m=$(mktemp -d); hdiutil attach /tmp/t.dmg -mountpoint "$m" -nobrowse -quiet; codesign --verify --deep --strict "$m/상품가격계산기.app"; echo "dmg verify rc=$?"; hdiutil detach "$m" -quiet
-          echo "== 7) 실행"
-          QT_QPA_PLATFORM=offscreen "$T/Contents/MacOS/상품가격계산기" & p=$!; sleep 8; kill -0 $p && echo "running OK" || echo "exited"; kill $p 2>/dev/null
+          find "$T/Contents" -type d -name "*.framework" | while IFS= read -r b; do codesign --verify --strict -vvvv "$b" >/tmp/v.log 2>&1 || { echo "FW BAD $b"; grep -v -- '--prepared\|--validated' /tmp/v.log | head -5; }; done
+          codesign --verify --strict -vvvv "$T" 2>&1 | grep -v -- '--prepared\|--validated' | head -20
+          echo "== 심볼릭 링크"; find "$T/Contents" -maxdepth 3 -type l | head -40 | while IFS= read -r l; do echo "$l -> $(readlink "$l")"; done
+          echo "== 끝"
