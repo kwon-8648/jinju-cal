@@ -71,5 +71,8 @@ if prev is None:
 else:
     os.environ["APPDATA"] = prev
 
-print("실패: " + ", ".join(fails) if fails else "모두 통과")
-sys.exit(1 if fails else 0)
+print("실패: " + ", ".join(fails) if fails else "모두 통과", flush=True)
+# 검사가 끝난 뒤 파이썬이 닫히며 Qt 창을 정리하다 리눅스에서 멈추는 일(종료 순서 문제)이 있어, 결과를 낸 뒤 바로 끝냄
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(1 if fails else 0)
