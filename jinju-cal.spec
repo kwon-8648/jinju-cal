@@ -17,8 +17,10 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 if MAC:
-    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=NAME, console=False, icon="assets/icon.icns")
-    coll = COLLECT(exe, a.binaries, a.datas, name=NAME)
+    # 앱 안쪽 실행 파일 이름은 영문으로: 한글이면 맥 codesign 이 앱 본체로 알아보지 못해
+    # 서명이 깨짐 ("손상된 파일"). 사용자에게 보이는 앱 이름(.app·메뉴·Dock)은 한글 그대로.
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="JinjuCal", console=False, icon="assets/icon.icns")
+    coll = COLLECT(exe, a.binaries, a.datas, name="JinjuCal")
     app = BUNDLE(
         coll,
         name=NAME + ".app",
@@ -27,6 +29,7 @@ if MAC:
         version=VERSION,
         info_plist={
             "CFBundleDisplayName": NAME,
+            "CFBundleName": NAME,
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
             "CFBundleDevelopmentRegion": "ko",

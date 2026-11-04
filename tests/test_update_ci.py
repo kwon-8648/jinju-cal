@@ -7,6 +7,7 @@
 닫은 뒤 새 것으로 바뀌는지(맥은 서명도 그대로인지) 확인.
 """
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,11 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+
+try:  # 윈도우 콘솔에서도 한글 결과가 찍히게
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -48,13 +54,14 @@ if sys.argv[1] == "mac":
     old = apps / built.name
     subprocess.run(["ditto", str(built), str(old)], check=True)
     (old / "Contents" / "Resources" / "OLD_MARKER").write_text("old")  # 예전 것 표시
-    t, why = update.current_target("darwin", str(old / "Contents" / "MacOS" / built.stem))
+    exe_name = plistlib.load(open(old / "Contents" / "Info.plist", "rb"))["CFBundleExecutable"]
+    t, why = update.current_target("darwin", str(old / "Contents" / "MacOS" / exe_name))
     check("바꿀 대상 = 복사한 앱", t == old.resolve(), (t, why))
 
     staged = update.prepare_mac(dmg, old)
     check("dmg 에서 새 앱 꺼내 옆에 둠", staged.exists() and staged.parent == old.parent, staged)
 
-    prog = subprocess.Popen([str(old / "Contents" / "MacOS" / built.stem)], env=env)
+    prog = subprocess.Popen([str(old / "Contents" / "MacOS" / exe_name)], env=env)
     threading.Thread(target=prog.wait, daemon=True).start()
     time.sleep(6)
     running = prog.poll() is None

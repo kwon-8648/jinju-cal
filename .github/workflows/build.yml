@@ -62,13 +62,9 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - run: pyinstaller --noconfirm jinju-cal.spec
-      # PyInstaller 의 서명이 실패하면(-10) 앱 서명이 깨져 맥이 "손상된 파일"이라며 막음 → 다시 서명하고 확인
+      # 앱 서명(임시 서명)을 안쪽부터 다시 하고 확인 — 깨졌으면 여기서 멈춤 (맥 "손상된 파일" 방지)
       - name: 앱 서명 (임시 서명) 및 확인
-        run: |
-          APP="dist/상품가격계산기.app"
-          xattr -cr "$APP"
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
+        run: bash scripts/mac_sign.sh "dist/상품가격계산기.app"
       - name: dmg 만들기
         run: |
           v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
