@@ -44,7 +44,14 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - name: 고금 매입 원본 검사 (실제 윈도우·맑은 고딕)
-        run: python -X faulthandler tests/test_goldmetal.py
+        shell: pwsh
+        run: |
+          $env:GOLDMETAL_RESULT = Join-Path $env:RUNNER_TEMP "goldmetal-result.txt"
+          python -X faulthandler tests/test_goldmetal.py
+          $r = Get-Content $env:GOLDMETAL_RESULT -Raw
+          "결과: $r"
+          if ($r -ne "PASS") { exit 1 }
+          exit 0
       - run: pyinstaller --noconfirm jinju-cal.spec
       - name: 만든 exe 실행 확인 (두 탭)
         shell: pwsh
