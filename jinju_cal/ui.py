@@ -81,6 +81,7 @@ def stylesheet():
     QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:4px 8px; }}
     QFrame#cell {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellincl {{ border:1px solid {C['line']}; border-radius:4px; background:{C['soft']}; }}
+    QLabel#donv {{ font-size:17px; font-weight:700; }}
     QLabel#cellv {{ font-size:18px; font-weight:700; }}
     QFrame#hline {{ background:{C['line']}; max-height:1px; min-height:1px; border:none; }}
     """
@@ -200,8 +201,19 @@ class MainWindow(QMainWindow):
         tf.setPixelSize(24)
         tf.setBold(True)
         title.setFont(tf)
-        top.addWidget(title)
+        top.addWidget(title, 0, Qt.AlignTop)
         top.addStretch(1)
+        corner = QVBoxLayout()
+        corner.setSpacing(2)
+        self.o_status = label("조회 전입니다. 시세를 조회하거나 수동 입력하세요.", "status", wrap=True)
+        self.o_status.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.o_status.setMaximumWidth(760)
+        corner.addWidget(self.o_status, 0, Qt.AlignRight)
+        link = QLabel(f'<a href="https://www.koreagoldx.co.kr/" style="color:{C["gold"]}">한국금거래소 시세 보기 ↗</a>')
+        link.setObjectName("lab")
+        link.setOpenExternalLinks(True)
+        corner.addWidget(link, 0, Qt.AlignRight)
+        top.addLayout(corner)
         root.addLayout(top)
 
         # --- 시세
@@ -240,13 +252,27 @@ class MainWindow(QMainWindow):
         line = QFrame()
         line.setObjectName("hline")
         pl.addWidget(line)
-        srow = QHBoxLayout()
-        self.o_status = label("조회 전입니다. 시세를 조회하거나 수동 입력하세요.", "status", wrap=True)
-        srow.addWidget(self.o_status, 1)
-        link = QLabel(f'<a href="https://www.koreagoldx.co.kr/" style="color:{C["gold"]}">한국금거래소 시세 보기 ↗</a>')
-        link.setOpenExternalLinks(True)
-        srow.addWidget(link)
-        pl.addLayout(srow)
+        drow = QHBoxLayout()
+        drow.setSpacing(10)
+        dcap = label("10K · 14K · 18K 1돈\n기준값 함량 비율", "lab")
+        drow.addWidget(dcap, 0, Qt.AlignVCenter)
+        self.dons = {}
+        for k in KARAT_KEYS:
+            fr = QFrame()
+            fr.setObjectName("cell")
+            vl = QVBoxLayout(fr)
+            vl.setContentsMargins(12, 6, 12, 8)
+            vl.setSpacing(1)
+            cap = label(f"{k}K 1돈", "lab")
+            v = label("-", "donv")
+            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            sub = label("", "lab")
+            vl.addWidget(cap)
+            vl.addWidget(v)
+            vl.addWidget(sub)
+            self.dons[k] = (cap, v, sub)
+            drow.addWidget(fr, 1)
+        pl.addLayout(drow)
         root.addWidget(pc)
 
         # --- 아래: 기준값 | 상품 계산
@@ -281,8 +307,8 @@ class MainWindow(QMainWindow):
         kh.setSpacing(12)
         kh.addWidget(label("10K · 14K · 18K 상품", "h2"))
         kh.addStretch(1)
-        self.k_white = QCheckBox("화이트")
-        self.k_white.setToolTip("체크하면 판매가에 화이트골드 추가금을 더합니다")
+        self.k_white = QCheckBox("화이트 도금")
+        self.k_white.setToolTip("체크하면 최종 판매가(별도·포함)에 화이트골드 추가금을 더합니다")
         kh.addWidget(self.k_white)
         sep = QFrame()
         sep.setObjectName("vline")
@@ -314,7 +340,7 @@ class MainWindow(QMainWindow):
             r3.addWidget(fd, 0, i)
             r3.setColumnStretch(i, 1)
         kl.addLayout(r3)
-        kl.addWidget(label("알값·셋팅비는 공임과 함께 공임 포함 원가에 합산합니다 (공란은 0원).\n"
+        kl.addWidget(label("표의 공임 = 공임 + 랩다이아 알값 + 다이아 셋팅비, 매입원가 = 금값 + 공임 (모두 부가세 별도, 공란은 0원).\n"
                            "중량·공임은 캐럿 공통, 마진율은 판매가 기준입니다.", "note", wrap=True))
         self.ktable = QFrame()
         self.ktable.setObjectName("ktable")
@@ -322,33 +348,35 @@ class MainWindow(QMainWindow):
         self.kgrid.setContentsMargins(12, 10, 12, 10)
         self.kgrid.setHorizontalSpacing(14)
         self.kgrid.setVerticalSpacing(8)
-        heads = ["금종류", "금 원가 · 부가세 별도", "공임 포함 원가 · 부가세 포함", "최종 판매가 · 부가세 별도", "최종 판매가 · 부가세 포함"]
+        heads = ["금종류", "금값\n부가세 별도", "공임\n알값·셋팅비 포함", "매입원가\n부가세 별도", "최종 판매가\n부가세 별도", "최종 판매가\n부가세 포함"]
         for i, h in enumerate(heads):
             lb = label(h, "th")
             lb.setAlignment((Qt.AlignLeft if i == 0 else Qt.AlignRight) | Qt.AlignVCenter)
             self.kgrid.addWidget(lb, 0, i)
         self.kgrid.setColumnStretch(0, 2)
-        for i in (1, 2, 3, 4):
+        for i in (1, 2, 3, 4, 5):
             self.kgrid.setColumnStretch(i, 3)
         self.krows = {}
         for r, k in enumerate(KARAT_KEYS, start=1):
             kk = label(k + "K", "kk")
             kk.setTextFormat(Qt.RichText)
             g = label("-", "kv")
+            lab_ = label("-", "kv")
             c = label("-", "kv")
             finx = label("-", "kfinx")
             finx.setTextFormat(Qt.RichText)
             fin = label("-", "kfin")
             fin.setTextFormat(Qt.RichText)
-            for w in (g, c, finx, fin):
+            for w in (g, lab_, c, finx, fin):
                 w.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 w.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            for i, w in enumerate((kk, g, c, finx, fin)):
+            for i, w in enumerate((kk, g, lab_, c, finx, fin)):
                 self.kgrid.addWidget(w, r, i)
-            self.krows[k] = (kk, g, c, finx, fin)
+            # (금종류, 금값, 공임, 매입원가, 판매가 별도, 판매가 포함)
+            self.krows[k] = (kk, g, lab_, c, finx, fin)
         self.kempty = label("위 체크박스에서 표시할 캐럿을 선택하세요.", "note")
         self.kempty.setAlignment(Qt.AlignCenter)
-        self.kgrid.addWidget(self.kempty, 4, 0, 1, 5)
+        self.kgrid.addWidget(self.kempty, 4, 0, 1, 6)
         kl.addWidget(self.ktable)
         stack.addWidget(kc)
 
@@ -499,6 +527,18 @@ class MainWindow(QMainWindow):
         unit = UNITS[self.f_unit.currentData() or 0]
         self.o_incl.setText(won(self.price) if self.has_price else "-")
         self.o_base.setText(won(base(self.price, vat)) if self.has_price and vok else "-")
+        # 10K·14K·18K 1돈 = 순금 1돈 × 함량 (부가세 포함 · 별도)
+        for k in KARAT_KEYS:
+            pct, pok = self.num("p" + k)
+            pok = pok and 0 < pct <= 100
+            cap, v, sub = self.dons[k]
+            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%)" if pok else f"{k}K 1돈")
+            if self.has_price and vok and pok:
+                v.setText(won(self.price * pct / 100))
+                sub.setText("부가세 별도 " + won(base(self.price, vat) * pct / 100))
+            else:
+                v.setText("-")
+                sub.setText("함량 확인" if self.has_price and not pok else "")
 
         if self.ag_exact is not None:
             g, gok = self.ag_exact, True
@@ -531,9 +571,9 @@ class MainWindow(QMainWindow):
             m, mok = self.num("m" + k)
             mok = mok and 0 <= m < 100
             bad("m" + k, not mok)
-            kk, gl, cl, fx, fl = self.krows[k]
+            kk, gl, ll, cl, fx, fl = self.krows[k]
             on = self.kchk[k].isChecked()
-            for w in (kk, gl, cl, fx, fl):
+            for w in (kk, gl, ll, cl, fx, fl):
                 w.setVisible(on)
             if not on:
                 continue
@@ -541,17 +581,19 @@ class MainWindow(QMainWindow):
             r = karat(self.price, vat, g, labor, dia, setv, pct, m, unit) if (self.has_price and vok and gok and lok and pok and mok) else None
             if r:
                 small = lambda t: f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">{t}</span>'
-                kk.setText(f"{k}K" + (f' <span style="font-size:12px;color:{C["muted"]};font-weight:500">화이트</span>' if kw else ""))
+                kk.setText(f"{k}K" + (f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">화이트 도금</span>' if kw else ""))
                 gl.setText(won(r["gold"]))
-                cl.setText(won(r["cost_incl"]))
+                ll.setText(won(labor + dia + setv))
+                cl.setText(won(r["gold"] + labor + dia + setv))
                 x = karat_excl(self.price, vat, g, labor, dia, setv, pct, m, unit, kx)
-                fx.setText(won(x) + (small(f"화이트 +{commas(kx)} 포함") if kx else ""))
-                fl.setText(won(r["final"] + kx) + (small(f"화이트 +{commas(kx)} 포함") if kx else ""))
+                fx.setText(won(x) + (small(f"도금 +{commas(kx)} 포함") if kx else ""))
+                fl.setText(won(r["final"] + kx) + (small(f"도금 +{commas(kx)} 포함") if kx else ""))
                 fx.setToolTip("")
                 fl.setToolTip("")
             else:
                 kk.setText(f"{k}K")
                 gl.setText("-")
+                ll.setText("-")
                 cl.setText("-")
                 fx.setText("-")
                 fl.setText("입력 확인" if self.has_price else "-")
@@ -581,6 +623,12 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 시세
     def set_status(self, text, is_bad=False):
+        # 한 줄에 들어가면 한 줄로 (오른쪽 위 구석), 긴 오류 문구만 줄바꿈
+        self.o_status.ensurePolished()
+        need = self.o_status.fontMetrics().horizontalAdvance(text) + 6
+        one_line = need <= self.o_status.maximumWidth()
+        self.o_status.setWordWrap(not one_line)
+        self.o_status.setMinimumWidth(need if one_line else 0)
         self.o_status.setText(text)
         v = "true" if is_bad else "false"
         if self.o_status.property("bad") != v:
