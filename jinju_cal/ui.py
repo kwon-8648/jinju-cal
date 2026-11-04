@@ -4,14 +4,16 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer
+import threading
+
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QApplication, QLineEdit, QMainWindow, QMessageBox, QProgressDialog, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from . import APP_NAME, __version__, storage
+from . import APP_NAME, __version__, storage, update
 from .core import GPD, UNITS, base, commas, fixed2, js_round, karat, karat_excl, parse_num, pure, won
 from .price import PriceFetcher
 
@@ -70,6 +72,8 @@ def stylesheet():
     QPushButton#ghost {{ background:transparent; color:{C['gold']}; }}
     QPushButton#ghost:hover {{ background:{C['soft']}; }}
     QPushButton#plain {{ background:transparent; color:{C['muted']}; border:1px solid {C['line']}; font-weight:500; }}
+    QPushButton#small {{ background:transparent; color:{C['muted']}; border:none; font-weight:500; font-size:11px; padding:0 4px; min-height:0; text-decoration:underline; }}
+    QPushButton#small:hover {{ color:{C['gold']}; }}
     QPushButton#plain:hover {{ background:{C['soft']}; color:{C['ink']}; }}
     QCheckBox {{ font-weight:600; spacing:6px; }}
     QFrame#ktable {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
@@ -157,6 +161,53 @@ def set_bad(edit: QLineEdit, bad: bool):
         edit.style().polish(edit)
 
 
+class UpdateChecker(QObject):
+    """새 버전 확인 (백그라운드)."""
+    done = Signal(object, object)  # (새 버전 정보 | None, 오류 문구 | None)
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        try:
+            self.done.emit(update.check(), None)
+        except update.UpdateError as e:
+            self.done.emit(None, str(e))
+        except Exception as e:
+            self.done.emit(None, str(e) or "확인 실패")
+
+
+class UpdateWorker(QObject):
+    """받기·준비·설치 스크립트 실행 (백그라운드)."""
+    progress = Signal(int, int)
+    stage = Signal(str)
+    done = Signal(object)  # 오류 문구 | None(성공)
+
+    def __init__(self, info):
+        super().__init__()
+        self.info = info
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        def prog(got, total):
+            self.progress.emit(got, total)
+            if total and got >= total:
+                self.stage.emit("새 버전을 준비하는 중…")
+        try:
+            update.install(self.info, prog, lambda: self._cancel)
+            self.done.emit(None)
+        except update.UpdateError as e:
+            self.done.emit(str(e))
+        except Exception as e:
+            self.done.emit(str(e) or "업데이트 실패")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -179,6 +230,11 @@ class MainWindow(QMainWindow):
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self.save_settings)
 
+        self.update_info = None
+        self.update_busy = False
+        self.checker = UpdateChecker()
+        self.checker.done.connect(self.on_update_checked)
+
         self.build()
         self.load_settings()
         self.wire()
@@ -186,6 +242,8 @@ class MainWindow(QMainWindow):
         self.set_auto_timer()
         if self.c_auto.isChecked():
             QTimer.singleShot(200, self.start_fetch)
+        if getattr(sys, "frozen", False):  # 만든 프로그램일 때만 실행 3초 뒤 조용히 새 버전 확인
+            QTimer.singleShot(3000, lambda: self.check_update(quiet=True))
 
     # ------------------------------------------------------------------ 화면
     def build(self):
@@ -213,6 +271,10 @@ class MainWindow(QMainWindow):
         link.setObjectName("lab")
         link.setOpenExternalLinks(True)
         corner.addWidget(link, 0, Qt.AlignRight)
+        self.b_update = button("새 버전 업데이트")
+        self.b_update.setToolTip("눌러서 새 버전을 받아 바꿉니다. 끝나면 프로그램이 다시 열립니다.")
+        self.b_update.hide()
+        corner.addWidget(self.b_update, 0, Qt.AlignRight)
         top.addLayout(corner)
         root.addLayout(top)
 
@@ -431,6 +493,8 @@ class MainWindow(QMainWindow):
 
         foot = QHBoxLayout()
         foot.addStretch(1)
+        self.b_check = button("업데이트 확인", "small")
+        foot.addWidget(self.b_check)
         self.ver = label(f"v{__version__}", "ver")
         foot.addWidget(self.ver)
         root.addLayout(foot)
@@ -458,6 +522,8 @@ class MainWindow(QMainWindow):
         self.c_auto.toggled.connect(self.on_auto)
         self.b_reset.clicked.connect(self.reset_defaults)
         self.k_clear.clicked.connect(lambda: self.clear_section("k"))
+        self.b_check.clicked.connect(lambda: self.check_update(quiet=False))
+        self.b_update.clicked.connect(lambda: self.start_update(self.update_info))
         self.p_clear.clicked.connect(lambda: self.clear_section("p"))
 
     def on_field(self, key):
@@ -723,6 +789,79 @@ class MainWindow(QMainWindow):
         self.f["ag" if kind == "k" else "pg"].setFocus()
         self.recompute()
         self.schedule_save()
+
+    # ------------------------------------------------------------------ 업데이트
+    def check_update(self, quiet=True):
+        if self.update_busy:
+            return
+        self.update_busy = True
+        self._quiet = quiet
+        self.b_check.setEnabled(False)
+        self.b_check.setText("확인 중…")
+        self.checker.start()
+
+    def on_update_checked(self, info, err):
+        self.update_busy = False
+        self.b_check.setEnabled(True)
+        self.b_check.setText("업데이트 확인")
+        if info:
+            self.update_info = info
+            self.b_update.setText(f"새 버전 {info['version']} 업데이트")
+            self.b_update.show()
+            if not self._quiet:
+                self.start_update(info)
+            return
+        if self._quiet:
+            return
+        if err:
+            self.say("업데이트 확인", "새 버전을 확인하지 못했습니다.\n" + err)
+        else:
+            self.say("업데이트 확인", f"지금 쓰는 v{__version__} 이 최신 버전입니다.")
+
+    def say(self, title, msg):
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(msg)
+        box.addButton("확인", QMessageBox.AcceptRole)
+        box.exec()
+
+    def start_update(self, info):
+        if not info:
+            return
+        target, why = update.current_target()
+        if target is None:
+            self.say("업데이트", why)
+            return
+        if not self.ask("업데이트", f"새 버전 {info['version']}을(를) 받아 지금 프로그램과 바꿀까요?\n"
+                                   f"(지금 v{__version__} · 받을 파일 {info['size'] / 1048576:.0f}MB)\n\n"
+                                   "다 받으면 프로그램이 잠깐 닫혔다가 새 버전으로 다시 열립니다.\n기준값과 시세는 그대로 남습니다."):
+            return
+        dlg = QProgressDialog("새 버전을 받는 중…", "취소", 0, 100, self)
+        dlg.setWindowTitle("업데이트")
+        dlg.setWindowModality(Qt.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+        dlg.setValue(0)
+        w = UpdateWorker(info)
+        w.progress.connect(lambda got, total: (dlg.setMaximum(max(1, total)), dlg.setValue(min(got, max(1, total))),
+                                               dlg.setLabelText(f"새 버전을 받는 중… {got / 1048576:.1f} / {total / 1048576:.1f}MB")))
+        w.stage.connect(dlg.setLabelText)
+        dlg.canceled.connect(w.cancel)
+        result = {}
+        w.done.connect(lambda err: (result.setdefault("err", err), dlg.close()))
+        self._update_worker = w
+        w.start()
+        dlg.exec()
+        if "err" not in result:  # 창을 닫았는데 아직 일하는 중이면 취소
+            w.cancel()
+            return
+        if result["err"]:
+            if result["err"] != "취소했습니다":
+                self.say("업데이트", "업데이트하지 못했습니다.\n" + result["err"])
+            return
+        self.save_settings()
+        QApplication.quit()  # 설치 스크립트가 프로그램이 닫히길 기다렸다가 바꾸고 다시 엶
 
     # ------------------------------------------------------------------ 저장
     def load_settings(self):

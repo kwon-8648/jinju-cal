@@ -186,6 +186,24 @@ check("순금 g → 돈", w.f["pd"].text() == "3.00")
 
 w.clear_section("p")
 check("순금 초기화", all(w.f[k].text() == "" for k in ("pg", "pd", "ring", "pl")) and w.pcells["p1x"].text() == "-")
+# 업데이트 버튼
+said = []
+w.say = lambda t, m: said.append(m)
+check("업데이트 버튼은 새 버전이 있을 때만", not w.b_update.isVisible() and w.b_check.text() == "업데이트 확인")
+w._quiet = True
+w.on_update_checked(None, None)
+check("새 버전 없으면 조용히", not w.b_update.isVisible() and not said)
+w._quiet = False
+w.on_update_checked(None, None)
+check("직접 확인했는데 최신이면 알림", said and "최신 버전" in said[-1], said)
+w.on_update_checked(None, "주소를 찾지 못함 (인터넷 연결 확인)")
+check("확인 실패 알림", "확인하지 못했습니다" in said[-1], said[-1:])
+w._quiet = True
+w.on_update_checked({"version": "9.9.9", "url": "x", "size": 1, "digest": "", "name": "x"}, None)
+check("새 버전 있으면 오른쪽 위에 버튼", w.b_update.isVisible() and w.b_update.text() == "새 버전 9.9.9 업데이트")
+w.start_update(w.update_info)
+check("개발 실행에서는 바꾸지 않고 안내", "만들어진 프로그램" in said[-1], said[-1:])
+
 w.close()
 pump(50)
 s = storage.load()

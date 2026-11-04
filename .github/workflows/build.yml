@@ -28,6 +28,8 @@ jobs:
       - name: 화면 동작
         env: { QT_QPA_PLATFORM: offscreen }
         run: python tests/test_ui.py
+      - name: 업데이트 동작
+        run: python tests/test_update.py
 
   windows:
     needs: test
@@ -39,6 +41,8 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - run: pyinstaller --noconfirm jinju-cal.spec
+      - name: 업데이트 바꿔치기 확인 (실행 중인 exe)
+        run: python tests/test_update_ci.py windows "dist/상품가격계산기.exe"
       - name: 이름 정리
         shell: pwsh
         run: |
@@ -77,6 +81,10 @@ jobs:
           hdiutil attach "out/jinju-cal-$v-mac.dmg" -mountpoint "$mnt" -nobrowse -quiet
           codesign --verify --deep --strict --verbose=2 "$mnt/상품가격계산기.app"
           hdiutil detach "$mnt" -quiet
+      - name: 업데이트 바꿔치기 확인 (dmg → 실행 중인 앱)
+        run: |
+          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)
+          python tests/test_update_ci.py mac "out/jinju-cal-$v-mac.dmg" "dist/상품가격계산기.app"
       - uses: actions/upload-artifact@v4
         with: { name: mac, path: out/* }
 
