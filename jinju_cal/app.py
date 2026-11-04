@@ -94,11 +94,22 @@ def main() -> int:
         b.exec()
         return 0
 
-    win = MainWindow()
+    smoke = "--smoke" in sys.argv  # 빌드 확인용: 두 탭이 다 뜨는지만 보고 바로 닫음 (자동 조회·업데이트 확인 없음)
+    win = MainWindow(gold_auto_fetch=not smoke)
+    app.aboutToQuit.connect(win.gold.save_on_quit)  # 맥 Cmd+Q·업데이트·다시 열기에서도 고금 입력값 저장
     if not storage.load().get("window"):
         scr = app.primaryScreen().availableGeometry()
         win.resize(min(1180, scr.width()), min(900, scr.height() - 40))
     win.show()
+    if smoke:
+        from PySide6.QtCore import QTimer
+        import lxml.etree  # noqa: F401  (고금 엑셀 저장에 필요한 부품이 들어 있는지)
+        import requests  # noqa: F401
+        def done():
+            ok = win.tabs.count() == 2 and win.gold.table.gold.rowCount() == 12 and win.gold.table.silver.rowCount() == 7
+            app.exit(0 if ok else 3)
+        win.tabs.setCurrentIndex(1)
+        QTimer.singleShot(1500, done)
     code = app.exec()
     lock.unlock()
     if win.restart_requested:  # 화면 크기를 바꿔 다시 열기

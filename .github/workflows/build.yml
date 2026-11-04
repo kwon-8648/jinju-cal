@@ -30,6 +30,9 @@ jobs:
         run: python tests/test_ui.py
       - name: 업데이트 동작
         run: python tests/test_update.py
+      - name: 고금 매입 (고금시세계산 원본 검사)
+        env: { QT_QPA_PLATFORM: offscreen }
+        run: python tests/test_goldmetal.py
 
   windows:
     needs: test
@@ -40,7 +43,18 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
+      - name: 고금 매입 원본 검사 (실제 윈도우·맑은 고딕)
+        run: python tests/test_goldmetal.py
       - run: pyinstaller --noconfirm jinju-cal.spec
+      - name: 만든 exe 실행 확인 (두 탭)
+        shell: pwsh
+        run: |
+          $env:JINJU_CAL_DATA = Join-Path $env:RUNNER_TEMP "smoke"
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP "smoke-appdata"
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $p = Start-Process -FilePath "dist/상품가격계산기.exe" -ArgumentList "--smoke" -Wait -PassThru
+          "exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { exit 1 }
       - name: 업데이트 바꿔치기 확인 (실행 중인 exe)
         run: python tests/test_update_ci.py windows "dist/상품가격계산기.exe"
       - name: 이름 정리
@@ -61,10 +75,17 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
+      - name: 고금 매입 원본 검사 (실제 맥·글자 크기 보정)
+        run: python tests/test_goldmetal.py
       - run: pyinstaller --noconfirm jinju-cal.spec
       # 앱 서명(임시 서명)을 안쪽부터 다시 하고 확인 — 깨졌으면 여기서 멈춤 (맥 "손상된 파일" 방지)
       - name: 앱 서명 (임시 서명) 및 확인
         run: bash scripts/mac_sign.sh "dist/상품가격계산기.app"
+      - name: 만든 앱 실행 확인 (두 탭)
+        run: |
+          export JINJU_CAL_DATA="$RUNNER_TEMP/smoke" APPDATA="$RUNNER_TEMP/smoke-appdata"
+          mkdir -p "$APPDATA"
+          "dist/상품가격계산기.app/Contents/MacOS/JinjuCal" --smoke; echo "exit code: $?"
       - name: dmg 만들기
         run: |
           v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' jinju_cal/__init__.py)

@@ -10,12 +10,13 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QApplication, QLineEdit, QMainWindow, QMessageBox, QProgressDialog, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QApplication, QLineEdit, QMainWindow, QMessageBox, QProgressDialog, QPushButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import APP_NAME, __version__, storage, update
 from .core import GPD, UNITS, base, commas, fixed2, js_round, karat, karat_excl, parse_num, pure, won
 from .price import PriceFetcher
+from .goldmetal.panel import GoldPanel
 
 KARAT_KEYS = ["10", "14", "18"]
 AUTO_MS = 10 * 60 * 1000
@@ -46,7 +47,12 @@ def display_font_family():
 
 def stylesheet():
     return f"""
-    QWidget {{ color:{C['ink']}; font-size:14px; }}
+    QWidget {{ color:{C['ink']}; }}
+    QTabWidget#main_tabs::pane {{ border:none; border-top:1px solid {C['line']}; }}
+    QTabWidget#main_tabs > QTabBar::tab {{ background:{C['soft']}; color:{C['muted']}; padding:6px 26px; margin:6px 2px 0 0;
+        border:1px solid {C['line']}; border-bottom:none; border-top-left-radius:6px; border-top-right-radius:6px; font-size:14px; font-weight:600; }}
+    QTabWidget#main_tabs > QTabBar::tab:selected {{ background:{C['gold']}; color:{C['gold_ink']}; border-color:{C['gold']}; }}
+    QTabWidget#main_tabs > QTabBar::tab:!selected:hover {{ background:{C['panel']}; color:{C['ink']}; }}
     QMainWindow, QScrollArea, #page {{ background:{C['bg']}; }}
     QFrame#card {{ background:{C['panel']}; border:1px solid {C['line']}; border-radius:6px; }}
     QLabel#h2 {{ font-size:16px; font-weight:700; }}
@@ -223,8 +229,9 @@ class UpdateWorker(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, gold_auto_fetch=True):
         super().__init__()
+        self.gold_auto_fetch = gold_auto_fetch
         self.setWindowTitle(APP_NAME)
         self.price = 0.0
         self.has_price = False
@@ -257,7 +264,7 @@ class MainWindow(QMainWindow):
         self.set_auto_timer()
         if self.c_auto.isChecked():
             QTimer.singleShot(200, self.start_fetch)
-        if getattr(sys, "frozen", False):  # 만든 프로그램일 때만 실행 3초 뒤 조용히 새 버전 확인
+        if getattr(sys, "frozen", False) and "--smoke" not in sys.argv:  # 만든 프로그램일 때만 실행 3초 뒤 조용히 새 버전 확인
             QTimer.singleShot(3000, lambda: self.check_update(quiet=True))
 
     # ------------------------------------------------------------------ 화면
@@ -524,16 +531,38 @@ class MainWindow(QMainWindow):
         foot.addWidget(self.b_check)
         self.ver = label(f"v{__version__}", "ver")
         foot.addWidget(self.ver)
-        root.addLayout(foot)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidget(page)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setCentralWidget(scroll)
-        # 가로로 잘리지 않는 최소 너비 (세로는 스크롤)
-        self.setMinimumSize(page.minimumSizeHint().width() + scroll.verticalScrollBar().sizeHint().width() + 4, 560)
+        self.price_scroll = scroll
+
+        # 위쪽 탭: [상품가격] [고금 매입]  (고금 매입은 고금시세계산 v1.16 그대로, 안에서 [금] [은] 탭)
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("main_tabs")
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(scroll, "상품가격")
+        self.gold = GoldPanel(auto_fetch=self.gold_auto_fetch)
+        self.tabs.addTab(self.gold, "고금 매입")
+
+        # 맨 아래 (두 탭 공통): 화면 크기 · 업데이트 확인 · 버전
+        outer = QWidget()
+        outer.setObjectName("page")
+        ol = QVBoxLayout(outer)
+        ol.setContentsMargins(0, 0, 0, 0)
+        ol.setSpacing(0)
+        ol.addWidget(self.tabs, 1)
+        fw = QWidget()
+        fw.setLayout(foot)
+        foot.setContentsMargins(14, 2, 14, 4)
+        ol.addWidget(fw)
+        self.setCentralWidget(outer)
+        # 가로로 잘리지 않는 최소 너비 (상품가격은 세로 스크롤, 고금 매입은 표가 창에 맞춰짐)
+        width = max(page.minimumSizeHint().width() + scroll.verticalScrollBar().sizeHint().width() + 4,
+                    self.gold.minimumSizeHint().width() + 4)
+        self.setMinimumSize(width, 560)
 
     # ------------------------------------------------------------------ 연결
     def wire(self):
@@ -939,6 +968,8 @@ class MainWindow(QMainWindow):
             self.set_status("저장된 이전 시세 · 최신 조회 아님 / " + self.price_time)
         sc_ = str(s.get("scale", "100"))
         self.f_scale.setCurrentIndex(max(0, self.f_scale.findData(int(sc_) if sc_.isdigit() else 100)))
+        if str(s.get("tab", "0")) == "1":
+            self.tabs.setCurrentIndex(1)
         geo = s.get("window")
         if isinstance(geo, list) and len(geo) == 2:
             try:
@@ -963,10 +994,12 @@ class MainWindow(QMainWindow):
             s["price"] = str(int(round(self.price)))
             s["time"] = self.price_time
             s["source"] = self.source
+        s["tab"] = str(self.tabs.currentIndex()) if hasattr(self, "tabs") else s.get("tab", "0")
         if not self.isMaximized() and not self.restart_requested:
             s["window"] = [self.width(), self.height()]
         storage.save(s)
 
     def closeEvent(self, e):
         self.save_settings()
+        self.gold.save_on_quit()  # 고금 매입: 원본처럼 입력 중인 시세·중량·설정 저장
         super().closeEvent(e)

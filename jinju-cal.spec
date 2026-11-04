@@ -10,7 +10,7 @@ MAC = sys.platform == "darwin"
 a = Analysis(
     ["run.py"],
     datas=[("assets/icon.png", "assets")],
-    hiddenimports=["certifi"],
+    hiddenimports=["certifi", "requests", "lxml.etree", "jinju_cal.goldmetal.panel"],
     excludes=["tkinter", "PySide6.QtNetwork", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtWebEngineCore",
               "PySide6.QtMultimedia", "PySide6.QtPdf", "PySide6.Qt3DCore", "PySide6.QtCharts", "PySide6.QtSql"],
 )

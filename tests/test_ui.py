@@ -8,6 +8,7 @@ import threading
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["JINJU_CAL_DATA"] = tempfile.mkdtemp()
+os.environ["APPDATA"] = tempfile.mkdtemp()  # 고금 매입 설정(OldTownMetalCalculator)도 시험용 폴더에
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
@@ -104,7 +105,7 @@ except core.PriceError as e:
 app = QApplication([])
 app.setStyle("Fusion")
 app.setStyleSheet(ui.stylesheet())
-w = ui.MainWindow()
+w = ui.MainWindow(gold_auto_fetch=False)
 w.resize(1180, 900)
 w.show()
 pump(1500)
@@ -113,14 +114,15 @@ check("상태줄 문구", w.o_status.text().startswith("API 조회 완료") and 
 check("10분 자동조회 타이머", w.auto_timer.isActive() and w.auto_timer.interval() == 600000)
 
 # 검색·코드·상품명·상호·품목·저장·삭제가 없어야 함
-texts = [x.text() for x in w.findChildren(QLabel)] + [x.text() for x in w.findChildren(QPushButton)]
-holders = [x.placeholderText() for x in w.findChildren(QLineEdit)]
+pg = w.price_scroll.widget()  # 상품가격 탭만 (고금 매입 탭에는 원래 '저장' 이 있음)
+texts = [x.text() for x in pg.findChildren(QLabel)] + [x.text() for x in pg.findChildren(QPushButton)] + [x.text() for x in w.findChildren(QPushButton) if x is w.b_check]
+holders = [x.placeholderText() for x in pg.findChildren(QLineEdit)]
 for word in ("검색", "코드", "상품명", "상호", "품목"):
     check(f"'{word}' 칸 없음", not any(t.strip() == word or t.startswith(word + " ") for t in texts) and not any(word in h for h in holders))
 check("'공임' 이름 (공통 공임 아님)", "공임 (부가세 별도)" in texts and "공통 공임 (부가세 별도)" not in texts)
 check("색상 고르기 없음, 화이트 체크만", not any(t in texts for t in ("색상", "핑크", "옐로우", "무도금")) and w.k_white.text() == "화이트 도금")
 for word in ("저장", "삭제"):
-    check(f"'{word}' 버튼 없음", word not in [b.text() for b in w.findChildren(QPushButton)])
+    check(f"'{word}' 버튼 없음", word not in [b.text() for b in pg.findChildren(QPushButton)])
 
 exp = {k: core.karat(731000, 10, 3.75, 50000, 0, 0, p, 30, 100) for k, p in (("10", 41.7), ("14", 58.5), ("18", 75))}
 for k, p in (("10", 41.7), ("14", 58.5), ("18", 75)):
@@ -217,11 +219,11 @@ check("개발 실행에서는 바꾸지 않고 안내", "만들어진 프로그�
 
 # 화면 촘촘하게: 설명 글은 ⓘ 에 마우스를 올리면 보임
 from PySide6.QtWidgets import QLabel as _QL
-tips = [x for x in w.findChildren(_QL) if x.objectName() == "tip"]
+tips = [x for x in w.price_scroll.widget().findChildren(_QL) if x.objectName() == "tip"]
 check("설명 글은 ⓘ 로 (3곳)", len(tips) == 3 and any("매입원가 = 금값 + 고리 + 공임" in t.toolTip() for t in tips)
       and any("알값" in t.toolTip() for t in tips) and any("올림 단위" in t.toolTip() for t in tips), [t.toolTip()[:20] for t in tips])
-check("화면에 늘 보이는 긴 설명 글 없음", not any(x.objectName() == "note" and x.isVisible() for x in w.findChildren(_QL)))
-h = w.centralWidget().widget().sizeHint().height()
+check("화면에 늘 보이는 긴 설명 글 없음", not any(x.objectName() == "note" and x.isVisible() for x in w.price_scroll.widget().findChildren(_QL)))
+h = w.price_scroll.widget().sizeHint().height()
 check("화면 높이 줄어듦 (예전 약 1,100)", h <= 900, h)
 
 # 화면 크기
@@ -243,17 +245,41 @@ w.restart_requested = False
 w.f_scale.setCurrentIndex(0)
 check("100%로 되돌리면 배율 없음", storage.load().get("scale") == "100" and appmod.apply_scale() == 100 and "QT_SCALE_FACTOR" not in os.environ)
 
+# 탭: [상품가격] [고금 매입], 고금 매입 안에 [금] [은]
+check("위쪽 탭 두 개", [w.tabs.tabText(i) for i in range(w.tabs.count())] == ["상품가격", "고금 매입"])
+g = w.gold
+check("고금 매입 안 [금 12품목] [은 7품목]", g.table.gold.rowCount() == 12 and g.table.silver.rowCount() == 7
+      and g.table.tabs.tabText(0).startswith("금 12품목") and g.table.tabs.tabText(1).startswith("은 7품목"))
+g.prices.update(GOLD=626000, SILVER=7530, PLATINUM=217000)
+g.weights[0][0].setText("3.75")
+g.weights[13][0].setText("100")
+pump(30)
+from jinju_cal.goldmetal import core as gcore
+e0 = gcore.calculate_row(gcore.calculate_unit_price(626000, "GOLD", gcore.RATE_ITEMS[0].multiplier), "3.75", "")[1]
+e13 = gcore.calculate_row(gcore.calculate_unit_price(7530, "SILVER", gcore.RATE_ITEMS[13].multiplier), "100", "")[1]
+check("고금 계산 (원본 계산식: 24k골드바 3.75g, 99은수저 100g)", (e0, e13) == (625999, 180300) and g.table.item(0, 6).text() == f"{e0:,}" and g.table.item(13, 6).text() == f"{e13:,}"
+      and g.total_label.text() == f"{e0 + e13:,}", (g.table.item(0, 6).text(), g.table.item(13, 6).text(), g.total_label.text()))
+check("[금] [은] 탭 제목에 합계", g.table.tabs.tabText(0).endswith(f"{e0:,}") and g.table.tabs.tabText(1).endswith(f"{e13:,}"), [g.table.tabs.tabText(i) for i in (0, 1)])
+check("고금은 원래 색 (초록 저장 버튼)", "#167344" in g.styleSheet())
+w.tabs.setCurrentIndex(1)
+w.save_settings()
+check("마지막 탭 기억", storage.load().get("tab") == "1")
+
 w.close()
 pump(50)
 s = storage.load()
 check("설정 저장", s.get("dia") == "30,000" and s.get("show10") == "0" and s.get("unit") == "1" and s.get("price") == "598000", s)
 
-w2 = ui.MainWindow()
+w2 = ui.MainWindow(gold_auto_fetch=False)
 check("다시 열면 복원", w2.f["dia"].text() == "30,000" and not w2.kchk["10"].isChecked() and w2.f_unit.currentIndex() == 1 and w2.i_price.text() == "598,000")
 check("최소 너비 안에서 가로로 안 잘림", w2.minimumWidth() <= 1100, w2.minimumWidth())
 w2.k_white.setChecked(True)
 w2.clear_section("k")
 check("초기화하면 화이트 체크 해제", not w2.k_white.isChecked() and w2.f["al"].text() == "")
+check("다시 열면 고금 매입 탭으로", w2.tabs.currentIndex() == 1)
+gs = gcore.load_state()
+check("닫을 때 고금 입력값도 저장", gs.get("weights", {}).get(g.keys[0], {}).get("input_weight") == "3.75", gs.get("weights", {}).get(g.keys[0]))
+check("다시 열면 고금 중량 그대로", w2.gold.weights[0][0].text() == "3.75" and w2.gold.prices["GOLD"] == 626000)
 check("버전 표시", w2.ver.text() == "v" + __import__("jinju_cal").__version__)
 w2.close()
 

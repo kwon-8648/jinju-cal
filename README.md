@@ -17,6 +17,17 @@
 - 맥은 앱이 **응용 프로그램** 폴더에 있어야 업데이트됩니다 (내려받은 곳이나 dmg 안에서 열면 옮기라고 안내).
 - 윈도우는 처음 받은 exe 파일 자리에서 그대로 바뀝니다 (파일 이름은 처음 받은 이름 그대로).
 
+## 고금 매입 탭 (1.2.0부터)
+
+고금시세계산 v1.16 (`kwon-8648/goldmetal-calculator`) 을 기능 그대로 옮겨 왔습니다. 원래 색(초록·파랑)과 원래 동작을 유지합니다.
+
+- 위쪽 탭 **[상품가격] [고금 매입]**. 고금 매입 안의 19품목 표는 **[금 12품목] [은 7품목]** 탭으로 나눠 저해상도 화면에서도 스크롤 없이 보입니다 (탭 제목에 금·은 합계, 최종합계는 원래대로 전체).
+- 금·은·백금 '내가 팔 때' 시세 카드 (직접 입력: Enter 적용 · Esc 취소), 30분 자동 갱신, 직접 입력 후 1~240분 뒤 갱신 확인
+- 입고·차감 중량, 환산(돈), 차감금액, 고객매입가, 최종합계 · **저장** → `매입내역.xlsx` 에 누적 (엑셀 저장 설정: 항목·순서·이름·폴더)
+- 다른 배율로 비교, 기준품목 이름 설정, Multiplier 설정, 중량 초기화, 글자 크기(10~12pt) — 비교·설정 창의 표도 [금] [은] 탭
+- 설정·엑셀은 원래 고금시세계산과 같은 곳을 그대로 이어 씁니다: 설정 `%APPDATA%\OldTownMetalCalculator\last_state.json` (맥 `~/Library/Application Support/OldTownMetalCalculator/`), 엑셀 `문서/고금시세계산/매입내역.xlsx`. 예전 고금시세계산 프로그램과 **동시에 켜지 마세요** (같은 설정 파일을 씀).
+- 코드: `jinju_cal/goldmetal/` (core·excel_export·xlsx_append 는 원본 그대로, panel.py 는 원본 app.py 를 탭으로). 원본 검사는 `tests/goldmetal/` 에 그대로 두고 `python tests/test_goldmetal.py` 로 돌립니다.
+
 ## 기능
 
 - 한국금거래소 '내가 살 때' 시세 자동 조회 (실행할 때, 10분마다). 직접 조회가 막히면 매장관리 웹의 서울 중계로 다시 조회합니다. 수동 입력도 됩니다.
@@ -51,6 +62,7 @@ pip install -r requirements.txt
 python run.py                 # 실행
 python tests/test_core.py     # 웹판과 계산 대조 (node 필요)
 python tests/test_ui.py       # 화면·시세 조회 동작
+python tests/test_goldmetal.py  # 고금 매입 (고금시세계산 원본 검사)
 python tests/test_update.py   # 업데이트 확인·받기·바꿔치기 (빌드 때는 실제 맥·윈도우에서 tests/test_update_ci.py 도)
 pyinstaller --noconfirm jinju-cal.spec   # 빌드
 ```
