@@ -29,9 +29,15 @@ jobs:
           echo "== 실행 파일"; ls -la "$APP/Contents/MacOS" | head; plutil -p "$APP/Contents/Info.plist" | head -30
           echo "== 이름에 한글/공백 있는 파일"; find "$APP" | LC_ALL=C grep -n '[^ -~]' | head -20
           echo "== Mach-O 개수"; find "$APP" -type f -exec file {} + | grep -c Mach-O
-          echo "== 10)"
-          cp -R "$APP" /tmp/A10.app; find /tmp/A10.app -name '*.cstemp'; bash scripts/mac_sign.sh /tmp/A10.app >/dev/null 2>&1; echo "sign rc=$?"
-          python scripts/check_seal.py /tmp/A10.app | head -40
-          codesign --verify --strict -vvvv /tmp/A10.app 2>&1 | grep -v -e '--prepared' -e '--validated' | head
-          codesign --verify --strict --no-strict -vvvv /tmp/A10.app 2>&1 | grep -v -e '--prepared' -e '--validated' | tail -3
+          echo "== 11) 영문 실행 파일 이름"
+          plutil -p "$APP/Contents/Info.plist" | grep -E 'Executable|BundleName|DisplayName'; ls "$APP/Contents/MacOS"
+          find "$APP" -name '*.cstemp'; codesign --verify --deep --strict "$APP"; echo "pyinstaller 서명 그대로 verify rc=$?"
+          cp -R "$APP" /tmp/A11.app; bash scripts/mac_sign.sh /tmp/A11.app >/dev/null 2>&1; echo "mac_sign rc=$?"
+          python scripts/check_seal.py /tmp/A11.app | tail -5
+          mkdir -p /tmp/d11 && cp -R /tmp/A11.app "/tmp/d11/상품가격계산기.app" && hdiutil create -volname t -srcfolder /tmp/d11 -ov -format UDZO /tmp/t11.dmg -quiet
+          m=$(mktemp -d); hdiutil attach /tmp/t11.dmg -mountpoint "$m" -nobrowse -quiet; codesign --verify --deep --strict "$m/상품가격계산기.app"; echo "dmg verify rc=$?"
+          cp -R "$m/상품가격계산기.app" /tmp/Q.app; hdiutil detach "$m" -quiet
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" /tmp/Q.app
+          spctl -a -vv -t exec /tmp/Q.app 2>&1 | head -3
+          QT_QPA_PLATFORM=offscreen /tmp/A11.app/Contents/MacOS/JinjuCal & p=$!; sleep 8; kill -0 $p && echo "running OK" || echo "exited"; kill $p 2>/dev/null
           echo "== 끝"
