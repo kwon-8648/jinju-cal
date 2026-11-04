@@ -29,12 +29,14 @@ jobs:
           echo "== 실행 파일"; ls -la "$APP/Contents/MacOS" | head; plutil -p "$APP/Contents/Info.plist" | head -30
           echo "== 이름에 한글/공백 있는 파일"; find "$APP" | LC_ALL=C grep -n '[^ -~]' | head -20
           echo "== Mach-O 개수"; find "$APP" -type f -exec file {} + | grep -c Mach-O
-          echo "== 8) xattr 지우고 파일→번들→앱, 자세한 확인"
-          cp -R "$APP" /tmp/A8.app; T=/tmp/A8.app; xattr -cr "$T"
-          find "$T/Contents" -type f -exec file {} + | grep Mach-O | cut -d: -f1 | while IFS= read -r f; do codesign --force --sign - "$f" >/dev/null 2>&1 || echo "file fail $f"; done
-          find "$T/Contents" -type d \( -name "*.framework" -o -name "*.app" -o -name "*.bundle" \) | awk '{print length, $0}' | sort -rn | cut -d' ' -f2- | while IFS= read -r b; do codesign --force --sign - "$b" >/tmp/b.log 2>&1 || { echo "bundle fail $b"; cat /tmp/b.log; }; done
-          codesign --force --sign - "$T"; echo "app rc=$?"
-          find "$T/Contents" -type d -name "*.framework" | while IFS= read -r b; do codesign --verify --strict -vvvv "$b" >/tmp/v.log 2>&1 || { echo "FW BAD $b"; grep -v -- '--prepared\|--validated' /tmp/v.log | head -5; }; done
-          codesign --verify --strict -vvvv "$T" 2>&1 | grep -v -- '--prepared\|--validated' | head -20
-          echo "== 심볼릭 링크"; find "$T/Contents" -maxdepth 3 -type l | head -40 | while IFS= read -r l; do echo "$l -> $(readlink "$l")"; done
+          echo "== 9) scripts/mac_sign.sh"
+          cp -R "$APP" /tmp/A9.app; bash scripts/mac_sign.sh /tmp/A9.app; echo "sign rc=$?"
+          codesign -dv /tmp/A9.app 2>&1 | grep -E 'Sealed|Info.plist|Signature'
+          mkdir -p /tmp/d9 && cp -R /tmp/A9.app "/tmp/d9/상품가격계산기.app" && hdiutil create -volname t -srcfolder /tmp/d9 -ov -format UDZO /tmp/t9.dmg -quiet
+          m=$(mktemp -d); hdiutil attach /tmp/t9.dmg -mountpoint "$m" -nobrowse -quiet; codesign --verify --deep --strict "$m/상품가격계산기.app"; echo "dmg verify rc=$?"
+          # 인터넷에서 받은 것처럼 표시해 Gatekeeper 판정 보기
+          cp -R "$m/상품가격계산기.app" /tmp/Q.app; hdiutil detach "$m" -quiet
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" /tmp/Q.app
+          spctl -a -vv -t exec /tmp/Q.app 2>&1 | head -3; syspolicy_check distribution /tmp/Q.app 2>&1 | head -8
+          QT_QPA_PLATFORM=offscreen /tmp/A9.app/Contents/MacOS/상품가격계산기 & p=$!; sleep 8; kill -0 $p && echo "running OK" || echo "exited"; kill $p 2>/dev/null
           echo "== 끝"
