@@ -32,7 +32,7 @@ jobs:
         run: python tests/test_update.py
       - name: 고금 매입 (고금시세계산 원본 검사)
         env: { QT_QPA_PLATFORM: offscreen }
-        run: python tests/test_goldmetal.py
+        run: python -X faulthandler tests/test_goldmetal.py
 
   windows:
     needs: test
@@ -44,7 +44,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - name: 고금 매입 원본 검사 (실제 윈도우·맑은 고딕)
-        run: python tests/test_goldmetal.py
+        run: python -X faulthandler tests/test_goldmetal.py
       - run: pyinstaller --noconfirm jinju-cal.spec
       - name: 만든 exe 실행 확인 (두 탭)
         shell: pwsh
@@ -76,7 +76,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller==6.16.0
       - name: 고금 매입 원본 검사 (실제 맥·글자 크기 보정)
-        run: python tests/test_goldmetal.py
+        run: python -X faulthandler tests/test_goldmetal.py
       - run: pyinstaller --noconfirm jinju-cal.spec
       # 앱 서명(임시 서명)을 안쪽부터 다시 하고 확인 — 깨졌으면 여기서 멈춤 (맥 "손상된 파일" 방지)
       - name: 앱 서명 (임시 서명) 및 확인
