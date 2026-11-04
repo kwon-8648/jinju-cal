@@ -12,7 +12,14 @@ for rel, v in files2.items():
         if not ok: bad += 1; print("SYMLINK", rel, v["symlink"], os.readlink(p) if os.path.islink(p) else "(없음)")
         continue
     if isinstance(v, dict) and ("cdhash" in v or "requirement" in v):
-        if not os.path.exists(p): bad += 1; print("NESTED MISSING", rel)
+        if not os.path.exists(p): bad += 1; print("NESTED MISSING", rel); continue
+        import subprocess
+        r = subprocess.run(["codesign", "-d", "--verbose=4", p], capture_output=True, text=True)
+        cur = [l.split("=", 1)[1] for l in r.stderr.splitlines() if l.startswith("CDHash=")]
+        rec = v.get("cdhash").hex() if isinstance(v.get("cdhash"), bytes) else None
+        vr = subprocess.run(["codesign", "--verify", "--strict", p], capture_output=True, text=True)
+        if (rec and cur and cur[0] != rec) or vr.returncode != 0:
+            bad += 1; print("NESTED BAD", rel, "rec", rec, "cur", cur[:1], vr.stderr.strip()[:200])
         continue
     h = v.get("hash2") if isinstance(v, dict) else None
     if h is None: continue
