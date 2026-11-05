@@ -548,6 +548,7 @@ class GoldPanel(QWidget):
         self.table = SplitTable((40, 11, 9, 7, 9, 11, 13), ("기준품목", "단가(g)", "입고중량(g)", "환산(돈)", "차감중량(g)", "차감금액", "고객매입가"),
                                 ("금 12품목", "은 7품목"))
         self.weights = []
+        self.dons = []
         stored = self.state_data.get("weights") or {}
         for i, (key, item) in enumerate(zip(self.keys, RATE_ITEMS)):
             for col, value in ((0, self.names[key]), (1, "0"), (3, "0.00"), (5, "0"), (6, "0")):
@@ -561,6 +562,16 @@ class GoldPanel(QWidget):
                 self.table.setCellWidget(i, col, edit)
                 pair.append(edit)
             self.weights.append(pair)
+            # 환산(돈)도 입력 가능 (상품가격 탭처럼): 돈을 넣으면 입고중량(g) = 돈 × 3.75
+            don = QLineEdit(f"{grams_to_don(pair[0].text()):.2f}" if pair[0].text() else "")
+            don.setPlaceholderText("0.00")
+            don.setAlignment(ALIGN)
+            don.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9,]*(?:\.[0-9]{0,4})?"), don))
+            don.textEdited.connect(lambda _t, row=i: self.don_edited(row))
+            pair[0].textChanged.connect(lambda _t, row=i: self.gram_changed(row))
+            don.editingFinished.connect(lambda row=i: self.gram_changed(row, force=True))
+            self.table.setCellWidget(i, 3, don)
+            self.dons.append(don)
         layout.addWidget(self.table.tabs, 1)
         footer = QHBoxLayout()
         footer.setSpacing(4)
@@ -583,6 +594,29 @@ class GoldPanel(QWidget):
         layout.addLayout(footer)
         self.change_font(persist=False)
         self.table.setFocus()
+
+    def don_edited(self, row):
+        """환산(돈)을 직접 입력 → 입고중량(g) 을 돈 × 3.75 로 채움 (계산은 g 기준 그대로)."""
+        raw = self.dons[row].text().replace(",", "").strip()
+        try:
+            grams = (Decimal(raw) * Decimal("3.75")).normalize() if raw and raw != "." else None
+        except Exception:
+            return
+        text = "" if grams is None else format(grams, "f")
+        gram_edit = self.weights[row][0]
+        if gram_edit.text() != text:
+            gram_edit.blockSignals(True)
+            gram_edit.setText(text)
+            gram_edit.blockSignals(False)
+            self.calculate_all()
+
+    def gram_changed(self, row, force=False):
+        """입고중량(g) 이 바뀌면 환산(돈) 칸을 맞춤 (돈 칸에 입력 중일 때는 그대로 둠)."""
+        don = self.dons[row] if row < len(self.dons) else None
+        if don is None or (don.hasFocus() and not force):
+            return
+        g = self.weights[row][0].text()
+        don.setText(f"{grams_to_don(g):.2f}" if g.strip() else "")
 
     def change_font(self, _index=None, persist=True):
         points = 10 + self.font_combo.currentIndex()

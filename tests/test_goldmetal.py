@@ -71,6 +71,53 @@ if prev is None:
 else:
     os.environ["APPDATA"] = prev
 
+print("== 4) 환산(돈) 직접 입력")
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
+with tempfile.TemporaryDirectory() as folder:
+    os.environ["APPDATA"] = folder
+    try:
+        w = panel.Calculator(auto_fetch=False)
+        w.resize(960, 560)
+        w.show()
+        w.activateWindow()
+        app.processEvents()
+        w.prices["GOLD"] = 967600
+        don, g = w.dons[0], w.weights[0][0]
+        don.setFocus()
+        QTest.keyClicks(don, "2")
+        assert g.text() == "7.5" and w.table.item(0, 6).text() not in ("", "0"), (g.text(), w.table.item(0, 6).text())
+        p_don = w.table.item(0, 6).text()
+        g.setFocus(); g.setText(""); g.setText("7.5")  # 같은 7.5g 를 g 로 넣으면 같은 금액
+        assert w.dons[0].text() == "2.00" and w.table.item(0, 6).text() == p_don, (w.dons[0].text(), p_don)
+        don.setFocus(); don.selectAll(); QTest.keyClick(don, Qt.Key_Backspace)
+        assert g.text() == "", g.text()
+        QTest.keyClicks(don, "1.333")
+        assert g.text() == "4.99875", g.text()
+        w.weights[0][1].setFocus()
+        app.processEvents()
+        if don.text() != "1.33":  # 화면 없는 검사에서는 포커스 이동이 안 될 수 있어 직접 알림
+            don.editingFinished.emit()
+        assert don.text() == "1.33", don.text()  # 칸을 벗어나면 0.00 형식으로
+        w.weights[1][0].setText("3.75")
+        assert w.dons[1].text() == "1.00", w.dons[1].text()
+        w.weights[1][0].clear()
+        assert w.dons[1].text() == "", w.dons[1].text()
+        w.persist_state()
+        import json as _j
+        st = _j.load(open(panel.state_path(), encoding="utf-8")) if hasattr(panel, "state_path") else None
+        assert st is None or st["weights"][w.keys[0]]["input_weight"] == "4.99875", st and st["weights"][w.keys[0]]
+        print("  ok  돈 입력 → g = 돈 × 3.75 · g 입력 → 돈 표시 · 지우기 · 저장은 g")
+        w.close()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        fails.append("don")
+if prev is None:
+    os.environ.pop("APPDATA", None)
+else:
+    os.environ["APPDATA"] = prev
+
 print("실패: " + ", ".join(fails) if fails else "모두 통과", flush=True)
 # 결과를 파일로도 남김 (윈도우에서는 검사가 끝난 뒤 Qt 종료 중에 멈춰 종료 코드를 믿을 수 없어서, 빌드는 이 파일로 판단)
 with open(os.environ.get("GOLDMETAL_RESULT", os.path.join(tempfile.gettempdir(), "goldmetal-result.txt")), "w", encoding="utf-8") as f:
