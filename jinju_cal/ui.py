@@ -228,6 +228,13 @@ class UpdateWorker(QObject):
             self.done.emit(str(e) or "업데이트 실패")
 
 
+def two_line(main, sub=""):
+    """잡금 결과 칸은 항상 두 줄로 그려 화이트 도금 체크 여부와 관계없이 높이를 고정한다."""
+    color = C["muted"] if sub else "transparent"
+    return (f'{main}<br><span style="font-size:11px;color:{color};font-weight:500">'
+            f'{sub or "도금"}</span>')
+
+
 class MainWindow(QMainWindow):
     def __init__(self, gold_auto_fetch=True):
         super().__init__()
@@ -445,14 +452,14 @@ class MainWindow(QMainWindow):
             self.kgrid.setColumnStretch(i, 3)
         self.krows = {}
         for r, k in enumerate(KARAT_KEYS, start=1):
-            kk = label(k + "K", "kk")
+            kk = label(two_line(k + "K"), "kk")
             kk.setTextFormat(Qt.RichText)
             g = label("-", "kv")
             lab_ = label("-", "kv")
             c = label("-", "kv")
-            finx = label("-", "kfinx")
+            finx = label(two_line("-"), "kfinx")
             finx.setTextFormat(Qt.RichText)
-            fin = label("-", "kfin")
+            fin = label(two_line("-"), "kfin")
             fin.setTextFormat(Qt.RichText)
             for w in (g, lab_, c, finx, fin):
                 w.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -703,23 +710,22 @@ class MainWindow(QMainWindow):
             any_row = True
             r = karat(self.price, vat, g, labor, dia, setv, pct, m, unit) if (self.has_price and vok and gok and lok and pok and mok) else None
             if r:
-                small = lambda t: f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">{t}</span>'
-                kk.setText(f"{k}K" + (f'<br><span style="font-size:11px;color:{C["muted"]};font-weight:500">화이트 도금</span>' if kw else ""))
+                kk.setText(two_line(f"{k}K", "화이트 도금" if kw else ""))
                 gl.setText(won(r["gold"]))
                 ll.setText(won(labor + dia + setv))
                 cl.setText(won(r["gold"] + labor + dia + setv))
                 x = karat_excl(self.price, vat, g, labor, dia, setv, pct, m, unit, kx)
-                fx.setText(won(x) + (small(f"도금 +{commas(kx)} 포함") if kx else ""))
-                fl.setText(won(r["final"] + kx) + (small(f"도금 +{commas(kx)} 포함") if kx else ""))
+                fx.setText(two_line(won(x), f"도금 +{commas(kx)} 포함" if kx else ""))
+                fl.setText(two_line(won(r["final"] + kx), f"도금 +{commas(kx)} 포함" if kx else ""))
                 fx.setToolTip("")
                 fl.setToolTip("")
             else:
-                kk.setText(f"{k}K")
+                kk.setText(two_line(f"{k}K", ""))
                 gl.setText("-")
                 ll.setText("-")
                 cl.setText("-")
-                fx.setText("-")
-                fl.setText("입력 확인" if self.has_price else "-")
+                fx.setText(two_line("-", ""))
+                fl.setText(two_line("입력 확인" if self.has_price else "-", ""))
                 tip = "노란 칸 중 빨간 칸을 확인하세요" if self.has_price else "시세를 먼저 입력하세요"
                 fx.setToolTip(tip)
                 fl.setToolTip(tip)

@@ -20,6 +20,11 @@ from jinju_cal import core, price, storage, ui  # noqa: E402
 fails = []
 
 
+def main(lbl):
+    """두 줄 결과 칸의 첫 줄(금액)만."""
+    return lbl.text().split("<br>")[0]
+
+
 def check(name, cond, extra=""):
     print(("  ok  " if cond else "  FAIL ") + name + (("  " + str(extra)) if extra and not cond else ""))
     if not cond:
@@ -126,9 +131,9 @@ for word in ("저장", "삭제"):
 
 exp = {k: core.karat(731000, 10, 3.75, 50000, 0, 0, p, 30, 100) for k, p in (("10", 41.7), ("14", 58.5), ("18", 75))}
 for k, p in (("10", 41.7), ("14", 58.5), ("18", 75)):
-    check(f"{k}K 기본값 판매가 · 포함", w.krows[k][5].text() == core.won(exp[k]["final"]), (w.krows[k][5].text(), exp[k]["final"]))
+    check(f"{k}K 기본값 판매가 · 포함", main(w.krows[k][5]) == core.won(exp[k]["final"]), (w.krows[k][5].text(), exp[k]["final"]))
     x = core.karat_excl(731000, 10, 3.75, 50000, 0, 0, p, 30, 100)
-    check(f"{k}K 기본값 판매가 · 별도", w.krows[k][4].text() == core.won(x), (w.krows[k][4].text(), x))
+    check(f"{k}K 기본값 판매가 · 별도", main(w.krows[k][4]) == core.won(x), (w.krows[k][4].text(), x))
     raw_x = (731000 / 1.1 * (3.75 / 3.75) * (p / 100) + 50000) / 0.7
     check(f"{k}K 별도 = 올림((금+공임) ÷ (1−마진))", x == -(-round(raw_x * 1e6) / 1e6 // 100) * 100, (x, raw_x))
     check(f"{k}K 별도 × 1.1 ≈ 포함", abs(x * 1.1 - exp[k]["final"]) <= 110, (x, exp[k]["final"]))
@@ -172,15 +177,18 @@ check("14K 화이트 판매가 · 포함 (+20,000)", w.krows["14"][5].text().sta
 ex = core.karat_excl(598000, 10, 1.333 * 3.75, 50000, 30000, 15000, 58.5, 30, 1000, 20000)
 ex0 = core.karat_excl(598000, 10, 1.333 * 3.75, 50000, 30000, 15000, 58.5, 30, 1000)
 check("14K 화이트 판매가 · 별도 (+20,000 그대로)", ex == ex0 + 20000 and w.krows["14"][4].text().startswith(core.won(ex)) and "도금 +20,000 포함" in w.krows["14"][4].text(), w.krows["14"][4].text())
+hs_on = [w.krows["14"][j].sizeHint().height() for j in range(6)] + [w.kgrid.cellRect(1, 0).height() if w.kgrid.cellRect(1, 0).isValid() else -1]
 w.k_white.setChecked(False)
 pump(50)
-check("화이트 해제하면 추가금 빠짐", w.krows["14"][5].text() == core.won(e["final"]) and w.krows["14"][4].text() == core.won(ex0), (w.krows["14"][4].text(), w.krows["14"][5].text()))
+hs_off = [w.krows["14"][j].sizeHint().height() for j in range(6)] + [w.kgrid.cellRect(1, 0).height() if w.kgrid.cellRect(1, 0).isValid() else -1]
+check("화이트 도금 체크해도 결과 칸 높이 고정", hs_on == hs_off, (hs_on, hs_off))
+check("화이트 해제하면 추가금 빠짐", main(w.krows["14"][5]) == core.won(e["final"]) and main(w.krows["14"][4]) == core.won(ex0) and "+20,000" not in w.krows["14"][4].text(), (w.krows["14"][4].text(), w.krows["14"][5].text()))
 w.k_white.setChecked(True)
 check("공임 칸 = 공임 + 알값 + 셋팅비", w.krows["14"][2].text() == core.won(50000 + 30000 + 15000), w.krows["14"][2].text())
 check("매입원가 = 금값 + 공임 합계", w.krows["14"][3].text() == core.won(e["gold"] + 95000), (w.krows["14"][3].text(), e["gold"]))
 w.f["m14"].setText("100")
 pump(50)
-check("마진 100% → 빨간 칸", w.f["m14"].property("invalid") == "true" and w.krows["14"][5].text() == "입력 확인" and w.krows["14"][4].text() == "-" and w.krows["14"][3].text() == "-")
+check("마진 100% → 빨간 칸", w.f["m14"].property("invalid") == "true" and main(w.krows["14"][5]) == "입력 확인" and main(w.krows["14"][4]) == "-" and w.krows["14"][3].text() == "-")
 w.f["p14"].setText("0")
 pump(50)
 check("함량 잘못되면 1돈 칸 '-'", w.dons["14"][1].text() == "-" and w.dons["14"][2].text() == "함량 확인")
