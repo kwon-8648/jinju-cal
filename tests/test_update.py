@@ -151,6 +151,20 @@ check("새 프로세스 환경: PyInstaller 실행 정보 제거",
 for k in ("_PYI_APPLICATION_HOME_DIR", "_PYI_PARENT_PROCESS_LEVEL", "_MEIPASS2"):
     os.environ.pop(k, None)
 
+# 남은 '….update.exe' 정리: 지금 것이 최신일 때만 지움
+_d = Path(tempfile.mkdtemp())
+os.environ["JINJU_CAL_DATA"] = str(_d / "data")
+_exe = _d / "상품가격계산기.exe"
+_exe.write_bytes(b"cur")
+check("남은 파일 없으면 None", update.leftover_staged(str(_exe)) is None)
+(_d / "상품가격계산기.update.exe").write_bytes(b"new")
+check("남은 update 파일 찾음", update.leftover_staged(str(_exe)) == _d / "상품가격계산기.update.exe")
+check("새 버전이 있으면 남겨 둠 (업데이트 때 덮어씀)", not update.cleanup_leftover(False, str(_exe)) and (_d / "상품가격계산기.update.exe").exists())
+check("최신이면 지움 + 기록", update.cleanup_leftover(True, str(_exe)) and not (_d / "상품가격계산기.update.exe").exists()
+      and "정리" in update.log_path().read_text(encoding="utf-8"))
+check("기록 파일은 설정 폴더", update.log_path() == _d / "data" / "update.log")
+check("윈도우 스크립트: 2분 재시도·복사 대비·기록", "Copy-Item" in update.WIN_SCRIPT and "$Log" in update.WIN_SCRIPT and update.WIN_SCRIPT.count("-lt 240") == 2)
+
 print("실패 %d건" % len(fails) if fails else "모두 통과")
 srv.shutdown()
 shutil.rmtree(tmp, ignore_errors=True)

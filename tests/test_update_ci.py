@@ -37,7 +37,8 @@ def check(name, cond, extra=""):
 
 os.environ["JINJU_UPDATE_NO_OPEN"] = "1"  # 바꾼 뒤 새 프로그램을 띄우지 않음
 work = Path(tempfile.mkdtemp(prefix="jinjucal-ci-"))
-env = dict(os.environ, JINJU_CAL_DATA=str(work / "data"), QT_QPA_PLATFORM="offscreen")
+os.environ["JINJU_CAL_DATA"] = str(work / "data")  # 업데이트 기록(update.log)도 여기로
+env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
 
 
 def run_installer(target, staged, pid, platform):
@@ -95,6 +96,20 @@ elif sys.argv[1] == "windows":
     th.join(150)
     check("닫은 뒤 새 exe 로 바뀜", box.get("rc") == 0 and old.read_bytes() == b"NEW-VERSION" and not staged.exists(), box)
     print("  (프로그램이 떠 있었는지: %s)" % running)
+
+    # 백신 검사처럼 기존 파일이 25초 동안 잡혀 있어도 (예전엔 20초 뒤 포기) 결국 바뀌는지
+    staged.write_bytes(b"NEW-VERSION-2")
+    holder = subprocess.Popen([sys.executable, "-c",
+                               "import sys,time; f=open(sys.argv[1],'rb'); time.sleep(25)", str(old)])
+    time.sleep(2)
+    th, box = run_installer(old, staged, 999999, "win32")
+    th.join(180)
+    holder.wait(30)
+    logtxt = update.log_path().read_text(encoding="utf-8-sig", errors="replace") if update.log_path().exists() else ""
+    check("파일이 25초 잡혀 있어도 결국 바뀜 (update 파일 안 남음)", box.get("rc") == 0 and old.read_bytes() == b"NEW-VERSION-2" and not staged.exists(),
+          (box, logtxt[-600:]))
+    check("업데이트 기록 남음", "바꿈" in logtxt, logtxt[-600:])
+    print(logtxt[-800:])
 
 print("실패 %d건" % len(fails) if fails else "모두 통과", flush=True)
 shutil.rmtree(work, ignore_errors=True)

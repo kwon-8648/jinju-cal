@@ -185,18 +185,39 @@ xattr -cr "$OLD" 2>/dev/null
 rm -f "$0"
 '''
 
-WIN_SCRIPT = r'''param([string]$Pids, [string]$Old, [string]$New)
+WIN_SCRIPT = r'''param([string]$Pids, [string]$Old, [string]$New, [string]$Log)
 $ErrorActionPreference = 'SilentlyContinue'
+function Say([string]$m) {
+  if ($Log) { try { Add-Content -LiteralPath $Log -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $m) -Encoding UTF8 } catch {} }
+}
+Say ('업데이트 시작: ' + $New + ' -> ' + $Old)
 $ids = $Pids -split ' ' | Where-Object { $_ } | ForEach-Object { [int]$_ }
+$closed = $false
 for ($i = 0; $i -lt 240; $i++) {
-  if (-not (Get-Process -Id $ids -ErrorAction SilentlyContinue)) { break }
+  if (-not (Get-Process -Id $ids -ErrorAction SilentlyContinue)) { $closed = $true; break }
   Start-Sleep -Milliseconds 500
 }
+Say ('프로그램 닫힘 대기: ' + $(if ($closed) { '닫힘' } else { '2분 지나도 열려 있음' }))
 $ok = $false
-for ($i = 0; $i -lt 40; $i++) {
-  try { Move-Item -LiteralPath $New -Destination $Old -Force -ErrorAction Stop; $ok = $true; break }
-  catch { Start-Sleep -Milliseconds 500 }
+$last = ''
+for ($i = 0; $i -lt 240; $i++) {
+  try { Move-Item -LiteralPath $New -Destination $Old -Force -ErrorAction Stop; $ok = $true; Say ('옮겨서 바꿈 (' + $i + '번 재시도)'); break }
+  catch { $last = $_.Exception.Message }
+  if ($i -ge 4) {  # 옮기기가 안 되면 복사로도 시도 (백신 검사 등으로 새 파일이 잡혀 있을 때)
+    try {
+      Copy-Item -LiteralPath $New -Destination $Old -Force -ErrorAction Stop
+      $ok = $true
+      Say ('복사해서 바꿈 (' + $i + '번 재시도)')
+      for ($k = 0; $k -lt 60; $k++) {
+        try { Remove-Item -LiteralPath $New -Force -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 500 }
+      }
+      if (Test-Path -LiteralPath $New) { Say '받은 파일(update)을 지우지 못함 - 다음 실행 때 정리' }
+      break
+    } catch { $last = $_.Exception.Message }
+  }
+  Start-Sleep -Milliseconds 500
 }
+if (-not $ok) { Say ('바꾸지 못함: ' + $last) }
 if ($env:JINJU_UPDATE_NO_OPEN -ne '1') { Start-Process -FilePath $Old }
 Remove-Item -LiteralPath $PSCommandPath -Force
 if (-not $ok) { exit 1 }
@@ -221,6 +242,55 @@ def wait_pids():
         except Exception:
             pass
     return pids
+
+
+def log_path() -> Path:
+    """업데이트 기록 파일 (설정 폴더의 update.log)."""
+    from .storage import data_dir
+    d = data_dir()
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return d / "update.log"
+
+
+def log(msg: str):
+    try:
+        p = log_path()
+        if p.exists() and p.stat().st_size > 200_000:  # 너무 커지면 뒤쪽만 남김
+            p.write_bytes(p.read_bytes()[-50_000:])
+        import datetime
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "  " + msg + "\n")
+    except Exception:
+        pass
+
+
+def leftover_staged(exe: str = None):
+    """윈도우: 지난 업데이트 때 바꾸지 못하고 남은 '….update.exe' (없으면 None)."""
+    if exe is None:
+        if not (sys.platform == "win32" and getattr(sys, "frozen", False)):
+            return None
+        exe = sys.executable
+    p = Path(exe)
+    staged = p.with_name(p.stem + ".update.exe")
+    return staged if staged.exists() else None
+
+
+def cleanup_leftover(latest: bool, exe: str = None):
+    """새 버전 확인 결과 지금 것이 최신이면 남은 update 파일을 지움.
+    (최신이 아니면 그대로 두면 됨: 업데이트할 때 새로 받아 덮어씀.)"""
+    staged = leftover_staged(exe)
+    if staged is None or not latest:
+        return False
+    try:
+        staged.unlink()
+        log(f"남은 업데이트 파일 정리: {staged.name}")
+        return True
+    except Exception as e:
+        log(f"남은 업데이트 파일을 지우지 못함: {staged.name} ({e})")
+        return False
 
 
 def child_env(extra=None):
@@ -252,7 +322,7 @@ def launch_installer(target: Path, staged: Path, pids=None, platform: str = None
         ps = tmp / "install.ps1"
         ps.write_text(WIN_SCRIPT, encoding="utf-8-sig")
         args = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-                "-File", str(ps), "-Pids", pids, "-Old", str(target), "-New", str(staged)]
+                "-File", str(ps), "-Pids", pids, "-Old", str(target), "-New", str(staged), "-Log", str(log_path())]
         flags = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
         kw = {"creationflags": flags} if not wait else {"creationflags": 0x08000000}
     else:
@@ -274,6 +344,7 @@ def install(info: dict, progress=None, cancelled=lambda: False, platform: str = 
     key = platform_key(platform)
     staged = prepare_mac(f, target) if key == "mac" else stage_windows(target, f)
     shutil.rmtree(work, ignore_errors=True)
+    log(f"새 버전 {info.get('version')} 받음 → 바꾸기 시작")
     launch_installer(target, staged, platform=platform)
     return target
 
