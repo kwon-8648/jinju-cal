@@ -284,6 +284,12 @@ def cleanup_leftover(latest: bool, exe: str = None):
     staged = leftover_staged(exe)
     if staged is None or not latest:
         return False
+    import time
+    try:  # 막 받아서 바꾸는 중인 파일은 건드리지 않음 (10분 넘게 남은 것만)
+        if time.time() - staged.stat().st_mtime < 600:
+            return False
+    except Exception:
+        return False
     try:
         staged.unlink()
         log(f"남은 업데이트 파일 정리: {staged.name}")
