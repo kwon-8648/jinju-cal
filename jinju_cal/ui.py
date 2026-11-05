@@ -49,7 +49,7 @@ def stylesheet():
     return f"""
     QWidget {{ color:{C['ink']}; }}
     QTabWidget#main_tabs::pane {{ border:none; border-top:1px solid {C['line']}; }}
-    QTabWidget#main_tabs > QTabBar::tab {{ background:{C['soft']}; color:{C['muted']}; padding:6px 26px; margin:6px 2px 0 0;
+    QTabWidget#main_tabs > QTabBar::tab {{ background:{C['soft']}; color:{C['muted']}; padding:4px 24px; margin:4px 2px 0 0;
         border:1px solid {C['line']}; border-bottom:none; border-top-left-radius:6px; border-top-right-radius:6px; font-size:14px; font-weight:600; }}
     QTabWidget#main_tabs > QTabBar::tab:selected {{ background:{C['gold']}; color:{C['gold_ink']}; border-color:{C['gold']}; }}
     QTabWidget#main_tabs > QTabBar::tab:!selected:hover {{ background:{C['panel']}; color:{C['ink']}; }}
@@ -556,7 +556,7 @@ class MainWindow(QMainWindow):
         ol.addWidget(self.tabs, 1)
         fw = QWidget()
         fw.setLayout(foot)
-        foot.setContentsMargins(14, 2, 14, 4)
+        foot.setContentsMargins(14, 1, 14, 2)
         ol.addWidget(fw)
         self.setCentralWidget(outer)
         # 가로로 잘리지 않는 최소 너비 (상품가격은 세로 스크롤, 고금 매입은 표가 창에 맞춰짐)

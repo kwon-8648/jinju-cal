@@ -96,7 +96,7 @@ STYLE = """
     QWidget { color: #172635; }
     GoldPanel, QDialog { background: #f3f5f8; }
     QFrame#card { background: white; border: 1px solid #cbd3dc; border-radius: 4px; }
-    QPushButton { background: white; color: #172635; border: 1px solid #b7c2cd; border-radius: 3px; padding: 4px 10px; font-weight: normal; min-height: 0px; }
+    QPushButton { background: white; color: #172635; border: 1px solid #b7c2cd; border-radius: 3px; padding: 3px 10px; font-weight: normal; min-height: 0px; }
     QPushButton:hover { background: #e8eff7; }
     QPushButton:disabled { color: #7a8794; background: #e7ebef; border-color: #b7c2cd; }
     QPushButton#primary { background: #167344; color: white; border-color: #167344; }
@@ -108,7 +108,7 @@ STYLE = """
     QComboBox { background: white; border: 1px solid #aebac7; border-radius: 0px; padding: 2px 5px; min-width: 56px; min-height: 0px; }
     QComboBox QAbstractItemView { background: white; selection-background-color: #e8eff7; selection-color: #172635; }
     QTabWidget::pane { border: 1px solid #b2bfcc; top: -1px; background: white; }
-    QTabBar::tab { background: #dfe7f0; color: #162d46; border: 1px solid #b2bfcc; border-bottom: none; padding: 4px 18px; margin-right: 2px; border-top-left-radius: 3px; border-top-right-radius: 3px; }
+    QTabBar::tab { background: #dfe7f0; color: #162d46; border: 1px solid #b2bfcc; border-bottom: none; padding: 3px 16px; margin-right: 2px; border-top-left-radius: 3px; border-top-right-radius: 3px; }
     QTabBar::tab:selected { background: white; font-weight: bold; }
     QTabBar::tab:!selected:hover { background: #e8eff7; }
 """
@@ -192,7 +192,7 @@ def setup_table(table, headers):
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     table.horizontalHeader().setFont(text_font(10, True))
-    table.horizontalHeader().setFixedHeight(max(25, QFontMetrics(text_font(10, True)).height() + 6))
+    table.horizontalHeader().setFixedHeight(max(22, QFontMetrics(text_font(10, True)).height() + 4))
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
     table.horizontalHeader().setMinimumSectionSize(36)
     table.verticalHeader().setMinimumSectionSize(20)
@@ -204,7 +204,7 @@ class FittedTable(QTableWidget):
     def __init__(self, weights, parent=None, rows=None):
         super().__init__(len(RATE_ITEMS) if rows is None else rows, len(weights), parent)
         self.weights = weights
-        self.row_minimum = 22
+        self.row_minimum = 20
 
     def fit(self):
         if self.viewport().width() < 50:
@@ -225,7 +225,7 @@ class FittedTable(QTableWidget):
     def set_readable_font(self, points):
         font = text_font(points)
         self.setFont(font)
-        self.row_minimum = max(22, QFontMetrics(font).height() + 5)
+        self.row_minimum = max(20, QFontMetrics(font).height() + 4)
         self.setMinimumHeight(self.row_minimum * self.rowCount() + self.horizontalHeader().height() + 2)
         for row in range(self.rowCount()):
             for col in range(self.columnCount()):
@@ -475,15 +475,16 @@ class GoldPanel(QWidget):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(5)
+        layout.setContentsMargins(8, 5, 8, 4)
+        layout.setSpacing(4)
         top = QHBoxLayout()
+        top.setSpacing(6)
         self.price_labels, self.date_labels = {}, {}
         for metal in METALS:
             card = QFrame()
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(6, 3, 6, 3)
+            card_layout.setContentsMargins(6, 2, 6, 2)
             card_layout.setSpacing(0)
             title = QLabel(METAL_DISPLAY[metal])
             title.setFont(text_font(10, True))
@@ -492,7 +493,7 @@ class GoldPanel(QWidget):
             value.setMaxLength(16)
             value.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9,]*"), value))
             value.setToolTip("시세를 직접 입력한 뒤 Enter 또는 다른 칸 클릭 · Esc 취소")
-            value.setMinimumHeight(QFontMetrics(value.font()).height() + 8)
+            value.setMinimumHeight(QFontMetrics(value.font()).height() + 4)
             value.committed.connect(lambda m=metal: self.commit_price(m))
             value.cancelled.connect(lambda m=metal: self.cancel_price(m))
             value.textEdited.connect(self.price_edit_started)
@@ -504,7 +505,7 @@ class GoldPanel(QWidget):
             top.addWidget(card, 1)
             self.price_labels[metal], self.date_labels[metal] = value, date
         actions = QGridLayout()
-        actions.setSpacing(3)
+        actions.setSpacing(2)
         self.status = QLabel("시세 확인 전")
         self.status.setFont(text_font(9))
         self.status.setAlignment(ALIGN)
@@ -517,6 +518,7 @@ class GoldPanel(QWidget):
         top.addLayout(actions)
         layout.addLayout(top)
         summary = QHBoxLayout()
+        summary.setSpacing(6)
         note = self.mode_label = QLabel()
         note.setFont(text_font(9))
         summary.addWidget(note, 1)
@@ -561,6 +563,7 @@ class GoldPanel(QWidget):
             self.weights.append(pair)
         layout.addWidget(self.table.tabs, 1)
         footer = QHBoxLayout()
+        footer.setSpacing(4)
         units = QLabel("금 12품목 · 은 7품목 | 중량 g / 금액 원")
         units.setFont(text_font(9))
         footer.addWidget(units)
