@@ -875,6 +875,9 @@ class MainWindow(QMainWindow):
             self.b_update.show()
             if not self._quiet:
                 self.start_update(info)
+            elif update.current_target()[0] is not None and self.ask_update(info):
+                # 실행할 때 확인한 경우: 바로 물어보고, '나중에'면 위쪽 버튼만 남김
+                self.start_update(info, confirm=False)
             return
         if self._quiet:
             return
@@ -890,14 +893,29 @@ class MainWindow(QMainWindow):
         box.addButton("확인", QMessageBox.AcceptRole)
         box.exec()
 
-    def start_update(self, info):
+    def ask_update(self, info):
+        box = QMessageBox(self)
+        box.setWindowTitle("새 버전")
+        box.setIcon(QMessageBox.Information)
+        box.setText(f"새 버전 {info['version']}이(가) 있습니다. 지금 업데이트할까요?")
+        box.setInformativeText(f"지금 v{__version__} · 받을 파일 {info['size'] / 1048576:.0f}MB\n"
+                               "다 받으면 프로그램이 잠깐 닫혔다가 새 버전으로 다시 열립니다.\n"
+                               "기준값과 시세는 그대로 남습니다.")
+        yes = box.addButton("지금 업데이트", QMessageBox.AcceptRole)
+        later = box.addButton("나중에", QMessageBox.RejectRole)
+        box.setDefaultButton(yes)
+        box.setEscapeButton(later)
+        box.exec()
+        return box.clickedButton() is yes
+
+    def start_update(self, info, confirm=True):
         if not info:
             return
         target, why = update.current_target()
         if target is None:
             self.say("업데이트", why)
             return
-        if not self.ask("업데이트", f"새 버전 {info['version']}을(를) 받아 지금 프로그램과 바꿀까요?\n"
+        if confirm and not self.ask("업데이트", f"새 버전 {info['version']}을(를) 받아 지금 프로그램과 바꿀까요?\n"
                                    f"(지금 v{__version__} · 받을 파일 {info['size'] / 1048576:.0f}MB)\n\n"
                                    "다 받으면 프로그램이 잠깐 닫혔다가 새 버전으로 다시 열립니다.\n기준값과 시세는 그대로 남습니다."):
             return

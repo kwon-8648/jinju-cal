@@ -2,6 +2,7 @@
 import http.server
 import json
 import os
+from pathlib import Path
 import sys
 import tempfile
 import threading
@@ -219,9 +220,28 @@ w.on_update_checked(None, None)
 check("직접 확인했는데 최신이면 알림", said and "최신 버전" in said[-1], said)
 w.on_update_checked(None, "주소를 찾지 못함 (인터넷 연결 확인)")
 check("확인 실패 알림", "확인하지 못했습니다" in said[-1], said[-1:])
+asked, started = [], []
+w.ask_update = lambda info: (asked.append(info["version"]), False)[1]
 w._quiet = True
 w.on_update_checked({"version": "9.9.9", "url": "x", "size": 1, "digest": "", "name": "x"}, None)
 check("새 버전 있으면 오른쪽 위에 버튼", w.b_update.isVisible() and w.b_update.text() == "새 버전 9.9.9 업데이트")
+check("개발 실행(바꿀 수 없는 곳)에서는 실행 시 묻지 않음", not asked, asked)
+# 실행할 때 새 버전 → 바로 묻기
+_ct, _su = ui.update.current_target, w.start_update
+ui.update.current_target = lambda: (Path("/Applications/x.app"), "")
+w.start_update = lambda info, confirm=True: started.append((info["version"], confirm))
+w.b_update.hide()
+w.on_update_checked({"version": "9.9.9", "url": "x", "size": 1, "digest": "", "name": "x"}, None)
+check("실행 시 새 버전 → 업데이트할지 물음, '나중에'면 넘어가고 버튼은 남김", asked == ["9.9.9"] and not started and w.b_update.isVisible(), (asked, started))
+w.ask_update = lambda info: (asked.append(info["version"]), True)[1]
+w.on_update_checked({"version": "9.9.9", "url": "x", "size": 1, "digest": "", "name": "x"}, None)
+check("'지금 업데이트' → 다시 묻지 않고 바로 받기", started == [("9.9.9", False)], started)
+w._quiet = False
+started.clear()
+w.on_update_checked({"version": "9.9.9", "url": "x", "size": 1, "digest": "", "name": "x"}, None)
+check("직접 확인 버튼은 기존대로 (받을지 한 번 물음)", started == [("9.9.9", True)] and len(asked) == 2, (started, asked))
+ui.update.current_target, w.start_update = _ct, _su
+w._quiet = True
 w.start_update(w.update_info)
 check("개발 실행에서는 바꾸지 않고 안내", "만들어진 프로그램" in said[-1], said[-1:])
 
