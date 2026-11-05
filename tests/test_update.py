@@ -151,22 +151,46 @@ check("새 프로세스 환경: PyInstaller 실행 정보 제거",
 for k in ("_PYI_APPLICATION_HOME_DIR", "_PYI_PARENT_PROCESS_LEVEL", "_MEIPASS2"):
     os.environ.pop(k, None)
 
-# 남은 '….update.exe' 정리: 지금 것이 최신일 때만 지움
+# 윈도우 업데이트 마무리 (새 exe 가 직접 바꿔치기) — 파일 동작은 어느 OS 에서나 같음
 _d = Path(tempfile.mkdtemp())
 os.environ["JINJU_CAL_DATA"] = str(_d / "data")
-_exe = _d / "상품가격계산기.exe"
-_exe.write_bytes(b"cur")
-check("남은 파일 없으면 None", update.leftover_staged(str(_exe)) is None)
-(_d / "상품가격계산기.update.exe").write_bytes(b"new")
-check("남은 update 파일 찾음", update.leftover_staged(str(_exe)) == _d / "상품가격계산기.update.exe")
-check("새 버전이 있으면 남겨 둠 (업데이트 때 덮어씀)", not update.cleanup_leftover(False, str(_exe)) and (_d / "상품가격계산기.update.exe").exists())
-check("막 받은 파일(10분 안)은 최신이어도 건드리지 않음", not update.cleanup_leftover(True, str(_exe)) and (_d / "상품가격계산기.update.exe").exists())
-_old = time.time() - 3600
-os.utime(_d / "상품가격계산기.update.exe", (_old, _old))
-check("최신이면 지움 + 기록", update.cleanup_leftover(True, str(_exe)) and not (_d / "상품가격계산기.update.exe").exists()
-      and "정리" in update.log_path().read_text(encoding="utf-8"))
-check("기록 파일은 설정 폴더", update.log_path() == _d / "data" / "update.log")
-check("윈도우 스크립트: 2분 재시도·복사 대비·기록", "Copy-Item" in update.WIN_SCRIPT and "$Log" in update.WIN_SCRIPT and update.WIN_SCRIPT.count("-lt 240") == 2)
+prog = _d / "prog"
+prog.mkdir()
+old = prog / "상품가격계산기.exe"
+old.write_bytes(b"OLD")
+for n in ("상품가격계산기.update.exe", "상품가격계산기.update.update.exe", "금계산기.update.exe"):
+    (prog / n).write_bytes(b"x")
+(prog / "다른프로그램.update.exe").write_bytes(b"keep")
+(prog / "메모.txt").write_text("keep")
+dl = _d / "dl.exe"
+dl.write_bytes(b"NEW")
+staged = update.stage_windows(dl)
+check("받은 파일은 설정 폴더(update)에 둠 (프로그램 폴더 아님)", staged.parent == _d / "data" / "update" and staged.read_bytes() == b"NEW" and not dl.exists(), staged)
+check("남은 update 파일 찾기 (우리 프로그램 것만)", sorted(f.name for f in update.leftovers(prog)) ==
+      sorted(["상품가격계산기.update.exe", "상품가격계산기.update.update.exe", "금계산기.update.exe"]))
+sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3)"])
+t0 = time.time()
+rc = update.finish_update(str(old), [sleeper.pid], me=str(staged), open_after=False)
+sleeper.wait()
+names = sorted(f.name for f in prog.iterdir())
+check("기존 프로그램이 닫힐 때까지 기다림", time.time() - t0 >= 2.5, time.time() - t0)
+check("'금계산기.exe' 로 바뀌고 예전 이름·update 파일 정리 (다른 파일은 그대로)",
+      rc == 0 and names == sorted(["금계산기.exe", "다른프로그램.update.exe", "메모.txt"]) and (prog / "금계산기.exe").read_bytes() == b"NEW", names)
+lg = update.log_path().read_text(encoding="utf-8")
+check("업데이트 기록", "바꿈" in lg and "예전 이름 파일 지움" in lg, lg[-300:])
+# 이미 '금계산기.exe' 인 경우 다시 업데이트
+dl.write_bytes(b"NEW2")
+staged = update.stage_windows(dl)
+rc = update.finish_update(str(prog / "금계산기.exe"), [999999], me=str(staged), open_after=False)
+check("같은 이름이면 그 자리에서 바뀜", rc == 0 and (prog / "금계산기.exe").read_bytes() == b"NEW2"
+      and sorted(f.name for f in prog.iterdir()) == sorted(["금계산기.exe", "다른프로그램.update.exe", "메모.txt"]))
+check("인자 해석", update.finish_from_argv.__code__ is not None)
+_args = []
+_fu = update.finish_update
+update.finish_update = lambda o, p, **k: _args.append((o, p)) or 0
+update.finish_from_argv(["x.exe", "--finish-update", r"C:\a\b.exe", "12,34"])
+update.finish_update = _fu
+check("'--finish-update 경로 pid,pid' 해석", _args == [(r"C:\a\b.exe", [12, 34])], _args)
 
 print("실패 %d건" % len(fails) if fails else "모두 통과")
 srv.shutdown()

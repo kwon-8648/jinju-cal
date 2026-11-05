@@ -113,7 +113,7 @@ def current_target(platform: str = None, exe: str = None):
     """바꿀 대상: 맥은 .app 폴더, 윈도우는 .exe 파일. 바꿀 수 없으면 (None, 이유)."""
     if not getattr(sys, "frozen", False) and exe is None:
         return None, "만들어진 프로그램(.app/.exe)으로 실행할 때만 업데이트할 수 있습니다."
-    exe = Path(exe or sys.executable).resolve()
+    exe = Path(exe or exe_path()).resolve()
     key = platform_key(platform)
     if key == "mac":
         app = next((p for p in [exe, *exe.parents] if p.suffix == ".app"), None)
@@ -185,54 +185,6 @@ xattr -cr "$OLD" 2>/dev/null
 rm -f "$0"
 '''
 
-WIN_SCRIPT = r'''param([string]$Pids, [string]$Old, [string]$New, [string]$Log)
-$ErrorActionPreference = 'SilentlyContinue'
-function Say([string]$m) {
-  if ($Log) { try { Add-Content -LiteralPath $Log -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $m) -Encoding UTF8 } catch {} }
-}
-Say ('업데이트 시작: ' + $New + ' -> ' + $Old)
-$ids = $Pids -split ' ' | Where-Object { $_ } | ForEach-Object { [int]$_ }
-$closed = $false
-for ($i = 0; $i -lt 240; $i++) {
-  if (-not (Get-Process -Id $ids -ErrorAction SilentlyContinue)) { $closed = $true; break }
-  Start-Sleep -Milliseconds 500
-}
-Say ('프로그램 닫힘 대기: ' + $(if ($closed) { '닫힘' } else { '2분 지나도 열려 있음' }))
-$ok = $false
-$last = ''
-for ($i = 0; $i -lt 240; $i++) {
-  try { Move-Item -LiteralPath $New -Destination $Old -Force -ErrorAction Stop; $ok = $true; Say ('옮겨서 바꿈 (' + $i + '번 재시도)'); break }
-  catch { $last = $_.Exception.Message }
-  if ($i -ge 4) {  # 옮기기가 안 되면 복사로도 시도 (백신 검사 등으로 새 파일이 잡혀 있을 때)
-    try {
-      Copy-Item -LiteralPath $New -Destination $Old -Force -ErrorAction Stop
-      $ok = $true
-      Say ('복사해서 바꿈 (' + $i + '번 재시도)')
-      for ($k = 0; $k -lt 60; $k++) {
-        try { Remove-Item -LiteralPath $New -Force -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 500 }
-      }
-      if (Test-Path -LiteralPath $New) { Say '받은 파일(update)을 지우지 못함 - 다음 실행 때 정리' }
-      break
-    } catch { $last = $_.Exception.Message }
-  }
-  Start-Sleep -Milliseconds 500
-}
-if (-not $ok) { Say ('바꾸지 못함: ' + $last) }
-if ($env:JINJU_UPDATE_NO_OPEN -ne '1') { Start-Process -FilePath $Old }
-Remove-Item -LiteralPath $PSCommandPath -Force
-if (-not $ok) { exit 1 }
-'''
-
-
-def stage_windows(exe: Path, downloaded: Path) -> Path:
-    """받은 exe 를 지금 exe 옆으로 (같은 드라이브라 바꿀 때 바로 옮겨짐)."""
-    staged = exe.with_name(exe.stem + ".update.exe")
-    if staged.exists():
-        staged.unlink()
-    shutil.move(str(downloaded), str(staged))
-    return staged
-
-
 def wait_pids():
     """기다릴 프로세스. 윈도우 한 파일 exe 는 바깥 실행기(부모)가 exe 를 잡고 있어서 부모도 기다림."""
     pids = [os.getpid()]
@@ -267,36 +219,194 @@ def log(msg: str):
         pass
 
 
-def leftover_staged(exe: str = None):
-    """윈도우: 지난 업데이트 때 바꾸지 못하고 남은 '….update.exe' (없으면 None)."""
-    if exe is None:
-        if not (sys.platform == "win32" and getattr(sys, "frozen", False)):
-            return None
-        exe = sys.executable
-    p = Path(exe)
-    staged = p.with_name(p.stem + ".update.exe")
-    return staged if staged.exists() else None
+# ---------------------------------------------------------------- 윈도우: 새 exe 가 직접 바꿔치기
+# 예전 방식(PowerShell 스크립트)은 보안 프로그램이 막으면 바꾸지도, 다시 열지도 못하고
+# '….update.exe' 가 남았다. 이제 받은 새 exe 를 설정 폴더(update)에 두고, 그 새 exe 를
+# '--finish-update' 로 실행해 직접 기존 프로그램이 닫히길 기다렸다가 '금계산기.exe' 로
+# 복사하고 다시 연다. 프로그램 폴더에는 임시 파일이 생기지 않는다.
+WIN_NAME = "금계산기.exe"           # 아이콘 밑에 보이는 파일 이름 (고정)
+OLD_STEMS = ("상품가격계산기", "금계산기")  # 예전에 쓰던 이름
+_EXE = None                          # 실행 중 이름을 바꾸면 여기에 새 경로
 
 
-def cleanup_leftover(latest: bool, exe: str = None):
-    """새 버전 확인 결과 지금 것이 최신이면 남은 update 파일을 지움.
-    (최신이 아니면 그대로 두면 됨: 업데이트할 때 새로 받아 덮어씀.)"""
-    staged = leftover_staged(exe)
-    if staged is None or not latest:
-        return False
-    import time
-    try:  # 막 받아서 바꾸는 중인 파일은 건드리지 않음 (10분 넘게 남은 것만)
-        if time.time() - staged.stat().st_mtime < 600:
+def exe_path() -> Path:
+    """지금 실행 중인 프로그램 파일 (이름을 바꿨으면 바뀐 경로)."""
+    return Path(_EXE or sys.executable)
+
+
+def stage_dir() -> Path:
+    from .storage import data_dir
+    return data_dir() / "update"
+
+
+def stage_windows(downloaded: Path) -> Path:
+    """받은 새 exe 를 설정 폴더(update)에 둠. 프로그램 폴더에는 아무것도 만들지 않음."""
+    d = stage_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    for f in d.glob("*.exe"):  # 예전에 받아 둔 것 (쓰는 중이면 그냥 둠)
+        try:
+            f.unlink()
+        except Exception:
+            pass
+    dest = d / "금계산기-new.exe"
+    if dest.exists():  # 지우지 못했으면 다른 이름으로
+        dest = d / f"금계산기-new-{os.getpid()}.exe"
+    shutil.move(str(downloaded), str(dest))
+    return dest
+
+
+def pid_alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x00100000 | 0x1000, False, int(pid))  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+        if not h:
             return False
-    except Exception:
-        return False
+        try:
+            return k.WaitForSingleObject(h, 0) == 0x102  # WAIT_TIMEOUT → 아직 실행 중
+        finally:
+            k.CloseHandle(h)
     try:
-        staged.unlink()
-        log(f"남은 업데이트 파일 정리: {staged.name}")
-        return True
-    except Exception as e:
-        log(f"남은 업데이트 파일을 지우지 못함: {staged.name} ({e})")
+        os.kill(int(pid), 0)
+    except OSError:
         return False
+    try:  # 끝났는데 거둬지지 않은(좀비) 프로세스는 닫힌 것으로
+        with open(f"/proc/{int(pid)}/stat") as f:
+            return f.read().split(")")[-1].split()[0] != "Z"
+    except Exception:
+        return True
+
+
+def leftovers(folder: Path, keep=()):
+    """프로그램 폴더에 예전 업데이트가 남긴 '….update.exe' 들."""
+    keep = {os.path.normcase(str(k)) for k in keep}
+    out = []
+    try:
+        files = list(Path(folder).glob("*.exe"))
+    except Exception:
+        return out
+    for f in files:
+        name = f.name
+        low = name.lower()
+        if ".update" not in low or os.path.normcase(str(f)) in keep:
+            continue
+        if name[:low.index(".update")] in OLD_STEMS:
+            out.append(f)
+    return out
+
+
+def _remove(f: Path, seconds: float = 0) -> bool:
+    import time
+    end = time.time() + seconds
+    while True:
+        try:
+            f.unlink()
+            return True
+        except FileNotFoundError:
+            return True
+        except Exception:
+            if time.time() >= end:
+                return False
+            time.sleep(0.5)
+
+
+def _start(exe: Path):
+    flags = (0x00000008 | 0x00000200) if sys.platform == "win32" else 0  # DETACHED | NEW_PROCESS_GROUP
+    kw = {"creationflags": flags} if sys.platform == "win32" else {"start_new_session": True}
+    return subprocess.Popen([str(exe)], cwd=str(exe.parent), env=child_env(), stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, **kw)
+
+
+def finish_update(old: str, pids, me: str = None, open_after: bool = True,
+                  wait_s: float = 120, retry_s: float = 120) -> int:
+    """(새 exe 안에서 실행) 기존 프로그램이 닫히길 기다렸다가 '금계산기.exe' 로 바꾸고 다시 엶."""
+    import time
+    me = Path(me or sys.executable)
+    old = Path(old)
+    target = old.with_name(WIN_NAME)
+    log(f"업데이트 마무리 시작: {me} → {target} (기존 {old.name})")
+    end = time.time() + wait_s
+    while any(pid_alive(p) for p in pids) and time.time() < end:
+        time.sleep(0.5)
+    log("기존 프로그램 닫힘" if not any(pid_alive(p) for p in pids) else "2분 지나도 기존 프로그램이 열려 있음")
+    ok, last, tries = False, "", 0
+    tmp = target.with_name("~" + target.stem + ".tmp")
+    end = time.time() + retry_s
+    while True:
+        tries += 1
+        try:
+            shutil.copyfile(me, tmp)
+            os.replace(tmp, target)
+            ok = True
+            break
+        except Exception as e:
+            last = str(e)
+            _remove(tmp)
+            if time.time() >= end:
+                break
+            time.sleep(0.5)
+    if ok:
+        log(f"바꿈 ({tries}번째 시도): {target.name}")
+        if os.path.normcase(str(old)) != os.path.normcase(str(target)) and old.exists():
+            log(("예전 이름 파일 지움: " if _remove(old, 30) else "예전 이름 파일을 지우지 못함: ") + old.name)
+        for f in leftovers(target.parent, keep=(target, me)):
+            log(("남은 update 파일 지움: " if _remove(f, 5) else "남은 update 파일을 지우지 못함: ") + f.name)
+    else:
+        log(f"바꾸지 못함: {last}")
+    run = target if ok else old
+    if open_after and os.environ.get("JINJU_UPDATE_NO_OPEN") != "1" and run.exists():
+        try:
+            p = _start(run)
+            log(f"다시 엶: {run.name} (pid {p.pid})")
+        except Exception as e:
+            log(f"다시 열지 못함: {e}")
+    return 0 if ok else 1
+
+
+def launch_finisher(staged: Path, old: Path, pids=None, wait: bool = False):
+    """받은 새 exe 를 '--finish-update' 로 실행 (지금 프로그램은 바로 닫아야 함)."""
+    pids = [str(p) for p in (pids or wait_pids())]
+    args = [str(staged), "--finish-update", str(old), ",".join(pids)]
+    kw = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
+    p = subprocess.Popen(args, cwd=str(Path(staged).parent), env=child_env(), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, **kw)
+    log(f"새 버전으로 바꾸기 시작 (pid {p.pid})")
+    if wait:
+        return p.wait(timeout=400)
+    return 0
+
+
+def finish_from_argv(argv) -> int:
+    i = argv.index("--finish-update")
+    old = argv[i + 1]
+    pids = [int(x) for x in argv[i + 2].split(",") if x.strip()] if len(argv) > i + 2 else []
+    return finish_update(old, pids)
+
+
+def tidy_windows(rename: bool = True):
+    """윈도우 실행 시 정리: 이름을 '금계산기.exe' 로 맞추고, 남은 update 파일·받아 둔 파일을 지움."""
+    global _EXE
+    if not (sys.platform == "win32" and getattr(sys, "frozen", False)):
+        return
+    cur = exe_path()
+    target = cur.with_name(WIN_NAME)
+    if rename and os.environ.get("JINJU_NO_SELF_RENAME") != "1" \
+            and os.path.normcase(str(cur)) != os.path.normcase(str(target)) and not target.exists():
+        try:  # 실행 중인 exe 도 같은 폴더 안에서는 이름을 바꿀 수 있음
+            os.rename(cur, target)
+            _EXE = str(target)
+            log(f"파일 이름을 바꿈: {cur.name} → {target.name}")
+            cur = target
+        except Exception as e:
+            log(f"파일 이름을 바꾸지 못함: {cur.name} ({e})")
+    for f in leftovers(cur.parent, keep=(cur,)):
+        if _remove(f):
+            log("남은 update 파일 지움: " + f.name)
+    try:
+        for f in stage_dir().glob("*.exe"):
+            _remove(f)
+    except Exception:
+        pass
 
 
 def child_env(extra=None):
@@ -324,13 +434,6 @@ def launch_installer(target: Path, staged: Path, pids=None, platform: str = None
         sh.chmod(0o755)
         args = ["/bin/bash", str(sh), pids, str(target), str(staged)]
         kw = {"start_new_session": True}
-    elif key == "windows":
-        ps = tmp / "install.ps1"
-        ps.write_text(WIN_SCRIPT, encoding="utf-8-sig")
-        args = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-                "-File", str(ps), "-Pids", pids, "-Old", str(target), "-New", str(staged), "-Log", str(log_path())]
-        flags = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
-        kw = {"creationflags": flags} if not wait else {"creationflags": 0x08000000}
     else:
         raise UpdateError("이 컴퓨터에서는 업데이트할 수 없습니다.")
     p = subprocess.Popen(args, env=child_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -348,10 +451,15 @@ def install(info: dict, progress=None, cancelled=lambda: False, platform: str = 
     work = Path(tempfile.mkdtemp(prefix="jinjucal-dl-"))
     f = download(info, work, progress, cancelled)
     key = platform_key(platform)
-    staged = prepare_mac(f, target) if key == "mac" else stage_windows(target, f)
-    shutil.rmtree(work, ignore_errors=True)
-    log(f"새 버전 {info.get('version')} 받음 → 바꾸기 시작")
-    launch_installer(target, staged, platform=platform)
+    log(f"새 버전 {info.get('version')} 받음")
+    if key == "mac":
+        staged = prepare_mac(f, target)
+        shutil.rmtree(work, ignore_errors=True)
+        launch_installer(target, staged, platform=platform)
+    else:
+        staged = stage_windows(f)
+        shutil.rmtree(work, ignore_errors=True)
+        launch_finisher(staged, target)
     return target
 
 

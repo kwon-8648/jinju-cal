@@ -48,7 +48,8 @@ def apply_scale():
 def restart_command():
     """다시 열 때 실행할 명령 (만든 프로그램이면 그 실행 파일, 개발 중이면 python run.py)."""
     if getattr(sys, "frozen", False):
-        return [sys.executable]
+        from .update import exe_path
+        return [str(exe_path())]
     return [sys.executable, os.path.abspath(sys.argv[0])]
 
 
@@ -63,6 +64,9 @@ def relaunch():
 
 
 def main() -> int:
+    if "--finish-update" in sys.argv:  # 업데이트: 새 exe 가 기존 프로그램을 바꾸고 다시 엶 (화면 없음)
+        from .update import finish_from_argv
+        return finish_from_argv(sys.argv)
     if sys.platform == "win32":
         try:  # 작업 표시줄에 이 프로그램 아이콘이 보이게
             import ctypes
@@ -95,6 +99,15 @@ def main() -> int:
         b.exec()
         return 0
 
+    try:  # 윈도우: 파일 이름 '금계산기.exe' 로 맞추고 예전 업데이트가 남긴 파일 정리
+        from . import update as _up
+        if "--smoke" not in sys.argv:
+            _up.tidy_windows()
+        from PySide6.QtCore import QTimer as _QT
+        if "--smoke" not in sys.argv:
+            _QT.singleShot(20000, lambda: _up.tidy_windows(rename=False))  # 막 끝난 업데이트의 받은 파일
+    except Exception:
+        pass
     smoke = "--smoke" in sys.argv  # 빌드 확인용: 두 탭이 다 뜨는지만 보고 바로 닫음 (자동 조회·업데이트 확인 없음)
     win = MainWindow(gold_auto_fetch=not smoke)
     app.aboutToQuit.connect(win.gold.save_on_quit)  # 맥 Cmd+Q·업데이트·다시 열기에서도 고금 입력값 저장

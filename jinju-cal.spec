@@ -1,4 +1,4 @@
-# PyInstaller 빌드 설정 — 윈도우: 상품가격계산기.exe (파일 하나) / 맥: 상품가격계산기.app
+# PyInstaller 빌드 설정 — 윈도우: 금계산기.exe (파일 하나) / 맥: 상품가격계산기.app
 #   pyinstaller --noconfirm jinju-cal.spec
 import re
 import sys
@@ -39,4 +39,5 @@ if MAC:
         },
     )
 else:
-    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=NAME, console=False, icon="assets/icon.ico", upx=False)
+    # 윈도우 파일 이름(아이콘 밑에 보이는 이름)은 '금계산기.exe' 로 고정
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name="금계산기", console=False, icon="assets/icon.ico", upx=False)

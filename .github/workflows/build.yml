@@ -59,17 +59,17 @@ jobs:
           $env:JINJU_CAL_DATA = Join-Path $env:RUNNER_TEMP "smoke"
           $env:APPDATA = Join-Path $env:RUNNER_TEMP "smoke-appdata"
           New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
-          $p = Start-Process -FilePath "dist/상품가격계산기.exe" -ArgumentList "--smoke" -Wait -PassThru
+          $p = Start-Process -FilePath "dist/금계산기.exe" -ArgumentList "--smoke" -Wait -PassThru
           "exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { exit 1 }
       - name: 업데이트 바꿔치기 확인 (실행 중인 exe)
-        run: python tests/test_update_ci.py windows "dist/상품가격계산기.exe"
+        run: python tests/test_update_ci.py windows "dist/금계산기.exe"
       - name: 이름 정리
         shell: pwsh
         run: |
           $v = (Select-String -Path jinju_cal/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item "dist/상품가격계산기.exe" "out/jinju-cal-$v-windows.exe"
+          Copy-Item "dist/금계산기.exe" "out/jinju-cal-$v-windows.exe"
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: out/* }
 

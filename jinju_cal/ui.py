@@ -867,8 +867,6 @@ class MainWindow(QMainWindow):
 
     def on_update_checked(self, info, err):
         self.update_busy = False
-        if not err:
-            update.cleanup_leftover(latest=not info)
         self.b_check.setEnabled(True)
         self.b_check.setText("업데이트 확인")
         if info:
