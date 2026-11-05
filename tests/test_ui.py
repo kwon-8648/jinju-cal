@@ -206,6 +206,8 @@ pp2 = core.pure(598000, 10, 11.25, 20000, 50000, 1000)
 check("순금 고리 넣으면 매입원가·판매가에 반영", w.pcells["cost"].text() == core.won(598000 / 1.1 * 11.25 / 3.75 + 20000 + 50000) and w.pcells["fin"].text() == core.won(pp2["i2"]), (w.pcells["cost"].text(), w.pcells["fin"].text()))
 check("순금 g → 돈", w.f["pd"].text() == "3.00")
 
+check("초기화 버튼은 수동 시세 적용과 같은 색", w.k_clear.objectName() == w.b_manual.objectName() == w.p_clear.objectName()
+      and w.k_clear.palette().button().color() == w.b_manual.palette().button().color())
 w.clear_section("p")
 check("순금 초기화", all(w.f[k].text() == "" for k in ("pg", "pd", "ring", "pl")) and w.pcells["finx"].text() == "-" and w.pcells["cost"].text() == "-")
 # 업데이트 버튼

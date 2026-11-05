@@ -415,7 +415,7 @@ class MainWindow(QMainWindow):
             cb = QCheckBox(k + "K")
             self.kchk[k] = cb
             kh.addWidget(cb)
-        self.k_clear = button("초기화", "plain")
+        self.k_clear = button("초기화")  # 수동 시세 적용과 같은 색
         kh.addWidget(self.k_clear)
         kl.addLayout(kh)
 
@@ -481,7 +481,7 @@ class MainWindow(QMainWindow):
         ph.addWidget(info_tip("금액은 모두 부가세 별도, 고리 금액 공란은 0원\n매입원가 = 금값 + 고리 + 공임\n"
                               "최종 판매가 = 금값 + 고리 + 공임×3 (공임 2배, 고리에는 배수 미적용)"))
         ph.addStretch(1)
-        self.p_clear = button("초기화", "plain")
+        self.p_clear = button("초기화")  # 수동 시세 적용과 같은 색
         ph.addWidget(self.p_clear)
         pcl.addLayout(ph)
         pr = QHBoxLayout()
