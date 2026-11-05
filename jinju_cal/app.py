@@ -54,7 +54,8 @@ def restart_command():
 
 def relaunch():
     import subprocess
-    env = dict(os.environ)
+    from .update import child_env
+    env = child_env()
     env.pop("QT_SCALE_FACTOR", None)  # 새로 열리는 쪽이 저장된 화면 크기를 다시 읽음
     kw = {"start_new_session": True} if sys.platform != "win32" else {"creationflags": 0x00000008 | 0x00000200}
     subprocess.Popen(restart_command(), env=env, close_fds=True, stdin=subprocess.DEVNULL,

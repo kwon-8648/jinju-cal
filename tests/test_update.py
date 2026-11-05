@@ -140,6 +140,17 @@ if shutil.which("bash"):
     update.launch_installer(old, apps / ".없음.app", pids=[999999], platform="darwin", wait=True)
     check("맥 스크립트: 바꿀 것이 없으면 그대로", (old / "Contents" / "version").read_text() == "9.9.9" and not (apps / "상품가격계산기.old.app").exists())
 
+# 새로 띄우는 프로그램이 기존 임시 폴더(_MEI…)를 같이 쓰지 않도록 실행 정보 제거
+os.environ["_PYI_APPLICATION_HOME_DIR"] = r"C:\Temp\_MEI123"
+os.environ["_PYI_PARENT_PROCESS_LEVEL"] = "1"
+os.environ["_MEIPASS2"] = r"C:\Temp\_MEI123"
+ce = update.child_env({"X_TEST": "1"})
+check("새 프로세스 환경: PyInstaller 실행 정보 제거",
+      not any(k.startswith("_PYI_") for k in ce) and "_MEIPASS2" not in ce
+      and ce.get("PYINSTALLER_RESET_ENVIRONMENT") == "1" and ce.get("X_TEST") == "1" and "PATH" in ce, sorted(ce))
+for k in ("_PYI_APPLICATION_HOME_DIR", "_PYI_PARENT_PROCESS_LEVEL", "_MEIPASS2"):
+    os.environ.pop(k, None)
+
 print("실패 %d건" % len(fails) if fails else "모두 통과")
 srv.shutdown()
 shutil.rmtree(tmp, ignore_errors=True)

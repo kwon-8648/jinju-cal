@@ -223,6 +223,20 @@ def wait_pids():
     return pids
 
 
+def child_env(extra=None):
+    """새 프로세스용 환경 변수.
+
+    윈도우 한 파일(onefile) 실행 파일은 자기 실행 정보(_PYI_*, _MEIPASS2)를 환경 변수로 남긴다.
+    그대로 넘기면 새로 띄운 프로그램이 기존 임시 폴더(_MEI…)를 같이 써서, 기존 프로그램이
+    닫힐 때 "Failed to remove temporary directory" 경고가 뜬다. 그래서 지우고 초기화를 요청한다.
+    """
+    env = {k: v for k, v in os.environ.items() if not (k.startswith("_PYI_") or k == "_MEIPASS2")}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    if extra:
+        env.update(extra)
+    return env
+
+
 def launch_installer(target: Path, staged: Path, pids=None, platform: str = None, wait: bool = False):
     """설치 스크립트를 따로 실행. wait=True 면 끝날 때까지 기다림 (시험용)."""
     key = platform_key(platform)
@@ -243,7 +257,8 @@ def launch_installer(target: Path, staged: Path, pids=None, platform: str = None
         kw = {"creationflags": flags} if not wait else {"creationflags": 0x08000000}
     else:
         raise UpdateError("이 컴퓨터에서는 업데이트할 수 없습니다.")
-    p = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, **kw)
+    p = subprocess.Popen(args, env=child_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, close_fds=True, **kw)
     if wait:
         return p.wait(timeout=180)
     return 0
