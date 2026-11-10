@@ -132,5 +132,10 @@ jobs:
             done
             gh release upload "v$v" files/* --clobber
           else
+            if [ "${{ github.ref_name }}" != "main" ]; then
+              # 시험 브랜치: 미리보기(prerelease)로만 올림 → 정식 버전 사용자의 자동 업데이트에는 안 잡힘
+              gh release create "v$v" files/* --prerelease --target "${{ github.sha }}" --title "[시험] 상품가격계산기 $v (${{ github.ref_name }})" --notes "시험 버전입니다. 정식 업데이트에는 나타나지 않습니다."
+              exit 0
+            fi
             gh release create "v$v" files/* --title "상품가격계산기 $v" --notes "윈도우: .exe 를 내려받아 실행 · 맥: .dmg 를 열고 앱을 응용 프로그램 폴더로 끌어 넣기 (처음 한 번은 앱을 오른쪽 클릭 → 열기)"
           fi

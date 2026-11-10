@@ -80,15 +80,16 @@ def karat_excl(price_incl, vat_pct, grams, labor, dia, setting, purity_pct, marg
     return ceil_unit((gold + labor + dia + setting) / (1 - margin_pct / 100), unit) + white
 
 
-def pure(price_incl, vat_pct, grams, ring, labor, unit):
+def pure(price_incl, vat_pct, grams, ring, labor, unit, mult=2):
     """순금. G = 1돈(별도) × g/3.75 + 고리; 1배 = G + 2×공임; 2배 = G + 3×공임.
+    mult(공임 배율): 최종 판매가 = 매입원가(G + 공임) + 공임 × mult → x2 = G + (1 + mult)×공임 (기본 2 = 웹과 같음).
     부가세 포함가는 올림 전 별도가에서 계산. 계산할 수 없으면 None."""
-    if not price_incl > 0 or not grams > 0 or ring < 0 or labor < 0 or vat_pct < 0 or vat_pct > 100:
+    if not price_incl > 0 or not grams > 0 or ring < 0 or labor < 0 or vat_pct < 0 or vat_pct > 100 or not 0 <= mult <= 100:
         return None
     v = vat_pct / 100
     g = price_incl / (1 + v) * grams / GPD + ring
     t1 = g + 2 * labor
-    t2 = g + 3 * labor
+    t2 = g + (1 + mult) * labor
     if t2 * (1 + v) > MAX_AMOUNT:
         return None
     return {"x1": ceil_unit(t1, unit), "i1": ceil_unit(t1 * (1 + v), unit),

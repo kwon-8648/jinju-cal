@@ -479,7 +479,7 @@ class MainWindow(QMainWindow):
         ph = QHBoxLayout()
         ph.addWidget(label("순금 상품", "h2"))
         ph.addWidget(info_tip("금액은 모두 부가세 별도, 고리 금액 공란은 0원\n매입원가 = 금값 + 고리 + 공임\n"
-                              "최종 판매가 = 금값 + 고리 + 공임×3 (공임 2배, 고리에는 배수 미적용)"))
+                              "최종 판매가 = 매입원가 + 공임 × 공임 배율 (기본 2배 = 금값 + 고리 + 공임×3, 고리에는 배수 미적용)"))
         ph.addStretch(1)
         self.p_clear = button("초기화")  # 수동 시세 적용과 같은 색
         ph.addWidget(self.p_clear)
@@ -491,7 +491,8 @@ class MainWindow(QMainWindow):
         r4 = QGridLayout()
         r4.setHorizontalSpacing(10)
         for i, (key, cap, phd) in enumerate([("pg", "중량 (g)", ""), ("pd", "환산 중량 (돈)", ""),
-                                             ("ring", "고리 금액 (별도)", "0"), ("pl", "개별공임 (별도)", "")]):
+                                             ("ring", "고리 금액 (별도)", "0"), ("pl", "개별공임 (별도)", ""),
+                                             ("pm", "공임 배율 (배)", "2")]):
             fd = Field(cap, phd)
             self.f[key] = fd.edit
             r4.addWidget(fd, 0, i)
@@ -503,6 +504,7 @@ class MainWindow(QMainWindow):
         cells = QGridLayout()
         cells.setSpacing(8)
         self.pcells = {}
+        self.pcaps = {}
         # (매입원가, 최종 판매가 별도, 최종 판매가 포함) — 잡금 결과표와 같은 이름
         for i, (key, cap, kind) in enumerate([("cost", "매입원가 · 부가세 별도", "cell"), ("finx", "최종 판매가 · 부가세 별도", "cellx"),
                                               ("fin", "최종 판매가 · 부가세 포함", "cellincl")]):
@@ -511,7 +513,9 @@ class MainWindow(QMainWindow):
             vl = QVBoxLayout(fr)
             vl.setContentsMargins(12, 5, 12, 6)
             vl.setSpacing(0)
-            vl.addWidget(label(cap, "lab"))
+            capl = label(cap, "lab")
+            self.pcaps[key] = capl
+            vl.addWidget(capl)
             v = label("-", "cellv")
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
             vl.addWidget(v)
@@ -746,8 +750,16 @@ class MainWindow(QMainWindow):
         bad("ring", not rok)
         pl, plok = self.num("pl", True)
         bad("pl", not plok)
-        pr = pure(self.price, vat, pg, ring, pl, unit) if (self.has_price and vok and pgok and rok and plok) else None
-        # 매입원가 = 금값 + 고리 + 공임 (부가세 별도) · 최종 판매가 = 공임 2배 (별도·포함)
+        pm, pmok = self.num("pm", True)
+        if self.f["pm"].text().strip() == "":
+            pm = 2.0  # 비우면 기본 2배
+        pmok = pmok and 0 <= pm <= 100
+        bad("pm", not pmok)
+        mtxt = f"{pm:g}"
+        self.pcaps["finx"].setText(f"최종 판매가 · 부가세 별도 (공임 {mtxt}배)" if pmok else "최종 판매가 · 부가세 별도")
+        self.pcaps["fin"].setText(f"최종 판매가 · 부가세 포함 (공임 {mtxt}배)" if pmok else "최종 판매가 · 부가세 포함")
+        pr = pure(self.price, vat, pg, ring, pl, unit, pm) if (self.has_price and vok and pgok and rok and plok and pmok) else None
+        # 매입원가 = 금값 + 고리 + 공임 (부가세 별도) · 최종 판매가 = 매입원가 + 공임 × 배율 (별도·포함)
         self.pcells["cost"].setText(won(self.price / (1 + vat / 100) * pg / GPD + ring + pl) if pr else "-")
         self.pcells["finx"].setText(won(pr["x2"]) if pr else "-")
         self.pcells["fin"].setText(won(pr["i2"]) if pr else "-")
