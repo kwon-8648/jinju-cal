@@ -216,3 +216,16 @@ def parse_api(text: str):
     if not q["date"] and _is_obj(root):
         q["date"] = _first_date(root)
     return q
+
+
+def karat_x(cost, mult, card_pct, cash_pct, unit, white=0):
+    """다른 금은방 방식: 정가 = 원가(매입원가, 부가세 별도) × 배율, 카드가 = 정가 × (1 − 카드 할인%),
+    현금가 = 정가 × (1 − 현금 할인%). 각각 올림 단위로 올리고 화이트 도금 금액은 마지막에 더함."""
+    if not cost > 0 or not 0 < mult <= 100 or not 0 <= card_pct < 100 or not 0 <= cash_pct < 100:
+        return None
+    list_price = cost * mult
+    if list_price > MAX_AMOUNT:
+        return None
+    return {"list": ceil_unit(list_price, unit) + white,
+            "card": ceil_unit(list_price * (1 - card_pct / 100), unit) + white,
+            "cash": ceil_unit(list_price * (1 - cash_pct / 100), unit) + white}

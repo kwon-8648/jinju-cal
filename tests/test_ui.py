@@ -157,6 +157,33 @@ pp = core.pure(731000, 10, 3.75, 0, 50000, 100)
 check("순금: 매입원가·판매가 별도·포함 세 칸만", sorted(w.pcells) == ["cost", "fin", "finx"])
 check("순금 매입원가 = 금값 + 고리 + 공임", w.pcells["cost"].text() == core.won(731000 / 1.1 * 3.75 / 3.75 + 0 + 50000), w.pcells["cost"].text())
 check("순금 최종 판매가 = 공임 2배 (별도·포함)", w.pcells["finx"].text() == core.won(pp["x2"]) and w.pcells["fin"].text() == core.won(pp["i2"]), (w.pcells["finx"].text(), w.pcells["fin"].text()))
+# 배율·할인 판매가 (정가 = 매입원가 × 배율, 카드·현금 할인)
+check("배율·할인 기본: 3배 · 카드 30% · 현금 40% · 표시", w.k_xmode.isChecked() and w.xbox.isVisible()
+      and (w.f["xm"].text(), w.f["dcard"].text(), w.f["dcash"].text()) == ("3", "30", "40"))
+_c14 = core.base(w.price, 10) * core.parse_num(w.f["ag"].text())[0] / core.GPD * 0.585 + core.parse_num(w.f["al"].text(), True)[0]
+_u = core.UNITS[w.f_unit.currentData() or 0]
+check("배율·할인: 원가·정가·카드가·현금가", [c.text() for c in w.xrows["14"][1:]] ==
+      [core.won(_c14), core.won(core.ceil_unit(_c14 * 3, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.7, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.6, _u))],
+      [c.text() for c in w.xrows["14"][1:]])
+w.f["xm"].setText("2.5"); w.f["dcard"].setText("20"); w.f["dcash"].setText("35")
+pump(10)
+check("배율·할인 조정 (2.5배 · 20% · 35%)", [c.text() for c in w.xrows["14"][2:]] ==
+      [core.won(core.ceil_unit(_c14 * 2.5, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.65, _u))]
+      and "2.5배" in w.xheads[2].text() and "20%" in w.xheads[3].text() and "35%" in w.xheads[4].text())
+w.k_white.setChecked(True)
+pump(10)
+_wx = core.js_round(core.parse_num(w.f["white"].text())[0])
+check("배율·할인 + 화이트 도금 추가금", w.xrows["14"][3].text() == core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u) + _wx))
+w.k_white.setChecked(False)
+w.f["dcash"].setText("100")
+pump(10)
+check("할인 100% → 입력 확인", w.xrows["14"][4].text() == "입력 확인")
+w.f["xm"].setText("3"); w.f["dcard"].setText("30"); w.f["dcash"].setText("40")
+w.k_xmode.setChecked(False)
+pump(10)
+check("배율·할인가 체크 해제 → 표 숨김", not w.xbox.isVisible())
+w.k_xmode.setChecked(True)
+pump(10)
 check("공임 배율 기본 2 · 제목에 표시", w.f["pm"].text() == "2" and "공임 2배" in w.pcaps["finx"].text())
 # 공임 배율 조정: 최종 판매가 = 금값 + 공임 × (1 + 배율)
 g0 = 731000 / 1.1
@@ -267,11 +294,15 @@ check("개발 실행에서는 바꾸지 않고 안내", "만들어진 프로그�
 # 화면 촘촘하게: 설명 글은 ⓘ 에 마우스를 올리면 보임
 from PySide6.QtWidgets import QLabel as _QL
 tips = [x for x in w.price_scroll.widget().findChildren(_QL) if x.objectName() == "tip"]
-check("설명 글은 ⓘ 로 (3곳)", len(tips) == 3 and any("매입원가 = 금값 + 고리 + 공임" in t.toolTip() for t in tips)
+check("설명 글은 ⓘ 로 (4곳, 배율·할인 포함)", len(tips) == 4 and any("매입원가 = 금값 + 고리 + 공임" in t.toolTip() for t in tips)
       and any("알값" in t.toolTip() for t in tips) and any("올림 단위" in t.toolTip() for t in tips), [t.toolTip()[:20] for t in tips])
 check("화면에 늘 보이는 긴 설명 글 없음", not any(x.objectName() == "note" and x.isVisible() for x in w.price_scroll.widget().findChildren(_QL)))
+w.k_xmode.setChecked(False)
+pump(10)
 h = w.price_scroll.widget().sizeHint().height()
-check("화면 높이 줄어듦 (예전 약 1,100)", h <= 900, h)
+check("화면 높이 줄어듦 (예전 약 1,100, 배율·할인 표를 끈 상태)", h <= 900, h)
+w.k_xmode.setChecked(True)
+pump(10)
 
 # 화면 크기
 from jinju_cal import app as appmod

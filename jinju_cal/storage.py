@@ -16,6 +16,7 @@ DEFAULTS = {
     "m10": "30", "m14": "30", "m18": "30",
     "ag": "3.75", "al": "50000", "dia": "", "set": "",
     "pg": "3.75", "pl": "50000", "ring": "", "white": "20000", "pm": "2",
+    "xm": "3", "dcard": "30", "dcash": "40",
 }
 FIELDS = list(DEFAULTS.keys())
 
