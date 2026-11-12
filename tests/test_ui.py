@@ -163,27 +163,37 @@ check("배율·할인 기본: 3배 · 카드 30% · 현금 40% · 표시", w.k_x
 _c14 = core.base(w.price, 10) * core.parse_num(w.f["ag"].text())[0] / core.GPD * 0.585 + core.parse_num(w.f["al"].text(), True)[0]
 _u = core.UNITS[w.f_unit.currentData() or 0]
 check("배율·할인: 원가·정가·카드가·현금가", [c.text() for c in w.xrows["14"][1:]] ==
-      [core.won(_c14), core.won(core.ceil_unit(_c14 * 3, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.7, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.6, _u))],
+      [core.won(_c14), core.won(core.ceil_unit(_c14 * 3, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.6, _u)), core.won(core.ceil_unit(_c14 * 3 * 0.7, _u))],
       [c.text() for c in w.xrows["14"][1:]])
 w.f["xm"].setText("2.5"); w.f["dcard"].setText("20"); w.f["dcash"].setText("35")
 pump(10)
 check("배율·할인 조정 (2.5배 · 20% · 35%)", [c.text() for c in w.xrows["14"][2:]] ==
-      [core.won(core.ceil_unit(_c14 * 2.5, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.65, _u))]
-      and "2.5배" in w.xheads[2].text() and "20%" in w.xheads[3].text() and "35%" in w.xheads[4].text())
+      [core.won(core.ceil_unit(_c14 * 2.5, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.65, _u)), core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u))]
+      and "2.5배" in w.xheads[2].text() and w.xheads[3].text() == "현금\n35% 할인" and w.xheads[4].text() == "카드\n20% 할인")
 w.k_white.setChecked(True)
 pump(10)
 _wx = core.js_round(core.parse_num(w.f["white"].text())[0])
-check("배율·할인 + 화이트 도금 추가금", w.xrows["14"][3].text() == core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u) + _wx))
+check("배율·할인 + 화이트 도금 추가금", w.xrows["14"][4].text() == core.won(core.ceil_unit(_c14 * 2.5 * 0.8, _u) + _wx))
 w.k_white.setChecked(False)
 w.f["dcash"].setText("100")
 pump(10)
-check("할인 100% → 입력 확인", w.xrows["14"][4].text() == "입력 확인")
+check("현금 할인 100% → 입력 확인", w.xrows["14"][4].text() == "입력 확인")
 w.f["xm"].setText("3"); w.f["dcard"].setText("30"); w.f["dcash"].setText("40")
 w.k_xmode.setChecked(False)
 pump(10)
 check("배율·할인가 체크 해제 → 표 숨김", not w.xbox.isVisible())
 w.k_xmode.setChecked(True)
 pump(10)
+check("판매가 표 보이기는 토글 버튼 (켜짐 = 금색)", w.k_xmode.isCheckable() and w.k_mmode.isCheckable()
+      and w.k_xmode.objectName() == w.k_mmode.objectName() == "toggle" and w.k_mmode.isChecked())
+check("현금 먼저, 카드 다음 (입력 칸도 같은 순서)", [h.text().split("\n")[0] for h in w.xheads[3:]] == ["현금", "카드"]
+      and w.f["dcash"].parent().parent() is w.f["dcard"].parent().parent())
+w.k_mmode.setChecked(False)
+pump(10)
+check("마진 판매가 토글 끄면 마진 % 입력·표 숨김", not w.mbox.isVisible() and not w.ktable.isVisible() and not w.f["m14"].isVisible())
+w.k_mmode.setChecked(True)
+pump(10)
+check("마진 판매가 토글 켜면 다시 보임", w.mbox.isVisible() and w.f["m14"].isVisible())
 check("공임 배율 기본 2 · 제목에 표시", w.f["pm"].text() == "2" and "공임 2배" in w.pcaps["finx"].text())
 # 공임 배율 조정: 최종 판매가 = 금값 + 공임 × (1 + 배율)
 g0 = 731000 / 1.1

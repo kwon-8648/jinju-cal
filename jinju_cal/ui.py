@@ -83,6 +83,10 @@ def stylesheet():
     QPushButton#small {{ background:transparent; color:{C['muted']}; border:none; font-weight:500; font-size:11px; padding:0 4px; min-height:0; text-decoration:underline; }}
     QPushButton#small:hover {{ color:{C['gold']}; }}
     QPushButton#plain:hover {{ background:{C['soft']}; color:{C['ink']}; }}
+    QPushButton#toggle {{ background:transparent; color:{C['gold']}; border:1px solid {C['gold']}; padding:3px 8px; }}
+    QPushButton#toggle:hover {{ background:{C['soft']}; }}
+    QPushButton#toggle:checked {{ background:{C['gold']}; color:{C['gold_ink']}; }}
+    QPushButton#toggle:checked:hover {{ background:#9a5606; }}
     QCheckBox {{ font-weight:600; spacing:6px; }}
     QFrame#ktable {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QLabel#th {{ color:{C['muted']}; font-size:12px; }}
@@ -404,9 +408,19 @@ class MainWindow(QMainWindow):
         kh.addWidget(info_tip("표의 공임 = 공임 + 랩다이아 알값 + 다이아 셋팅비\n매입원가 = 금값 + 공임 (모두 부가세 별도, 공란은 0원)\n"
                               "중량·공임은 캐럿 공통, 마진율은 판매가 기준입니다."))
         kh.addStretch(1)
-        self.k_xmode = QCheckBox("배율·할인가")
-        self.k_xmode.setToolTip("체크하면 아래에 '원가 × 배율 → 카드·현금 할인가' 표를 함께 보여 줍니다")
+        # 판매가 표 보이기/숨기기 (토글 버튼: 켜지면 금색)
+        self.k_mmode = button("마진 판매가", "toggle")
+        self.k_mmode.setCheckable(True)
+        self.k_mmode.setToolTip("켜면 마진 %로 계산한 판매가 표(마진 % 입력 포함)를 보여 줍니다")
+        kh.addWidget(self.k_mmode)
+        self.k_xmode = button("배율·할인가", "toggle")
+        self.k_xmode.setCheckable(True)
+        self.k_xmode.setToolTip("켜면 '원가 × 배율 → 현금·카드 할인가' 표를 보여 줍니다")
         kh.addWidget(self.k_xmode)
+        sep0 = QFrame()
+        sep0.setObjectName("vline")
+        sep0.setFixedSize(1, 18)
+        kh.addWidget(sep0)
         self.k_white = QCheckBox("화이트 도금")
         self.k_white.setToolTip("체크하면 최종 판매가(별도·포함)에 화이트골드 추가금을 더합니다")
         kh.addWidget(self.k_white)
@@ -439,7 +453,12 @@ class MainWindow(QMainWindow):
             self.f["m" + k] = fd.edit
             r3.addWidget(fd, 0, i)
             r3.setColumnStretch(i, 1)
-        kl.addLayout(r3)
+        # 마진 판매가 (마진 % 입력 + 표) — '마진 판매가' 토글로 보이기/숨기기
+        self.mbox = QWidget()
+        ml = QVBoxLayout(self.mbox)
+        ml.setContentsMargins(0, 0, 0, 0)
+        ml.setSpacing(kl.spacing())
+        ml.addLayout(r3)
         self.ktable = QFrame()
         self.ktable.setObjectName("ktable")
         self.kgrid = QGridLayout(self.ktable)
@@ -475,7 +494,8 @@ class MainWindow(QMainWindow):
         self.kempty = label("위 체크박스에서 표시할 캐럿을 선택하세요.", "note")
         self.kempty.setAlignment(Qt.AlignCenter)
         self.kgrid.addWidget(self.kempty, 4, 0, 1, 6)
-        kl.addWidget(self.ktable)
+        ml.addWidget(self.ktable)
+        kl.addWidget(self.mbox)
 
         # 배율·할인 방식 (다른 금은방): 정가 = 원가 × 배율 → 카드가·현금가 = 정가에서 할인
         self.xbox = QWidget()
@@ -486,13 +506,13 @@ class MainWindow(QMainWindow):
         xh.setSpacing(10)
         xh.addWidget(label("배율·할인 판매가", "h3"))
         xh.addWidget(info_tip("원가 = 위 표의 매입원가 (금값 + 공임, 부가세 별도)\n정가 = 원가 × 판매 배율\n"
-                              "카드가 = 정가 − 카드 할인 % · 현금가 = 정가 − 현금 할인 %\n"
+                              "현금 = 정가 − 현금 할인 % · 카드 = 정가 − 카드 할인 %\n"
                               "판매가 올림 단위로 올리고, 화이트 도금 체크 시 추가금을 더합니다. 마진 %는 쓰지 않습니다."))
         xh.addStretch(1)
         xl.addLayout(xh)
         r6 = QGridLayout()
         r6.setHorizontalSpacing(10)
-        for i, (key, cap) in enumerate([("xm", "판매 배율 (배)"), ("dcard", "카드 할인 %"), ("dcash", "현금 할인 %")]):
+        for i, (key, cap) in enumerate([("xm", "판매 배율 (배)"), ("dcash", "현금 할인 %"), ("dcard", "카드 할인 %")]):
             fd = Field(cap)
             self.f[key] = fd.edit
             r6.addWidget(fd, 0, i)
@@ -505,7 +525,7 @@ class MainWindow(QMainWindow):
         self.xgrid.setHorizontalSpacing(14)
         self.xgrid.setVerticalSpacing(4)
         self.xheads = []
-        for i, h in enumerate(["금종류", "원가\n매입원가 · 부가세 별도", "정가\n원가 × 배율", "카드가\n할인", "현금가\n할인"]):
+        for i, h in enumerate(["금종류", "원가\n매입원가 · 부가세 별도", "정가\n원가 × 배율", "현금\n할인", "카드\n할인"]):
             lb = label(h, "th")
             lb.setAlignment((Qt.AlignLeft if i == 0 else Qt.AlignRight) | Qt.AlignVCenter)
             self.xgrid.addWidget(lb, 0, i)
@@ -521,7 +541,7 @@ class MainWindow(QMainWindow):
                     w.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                     w.setTextInteractionFlags(Qt.TextSelectableByMouse)
                 self.xgrid.addWidget(w, r, i)
-            # (금종류, 원가, 정가, 카드가, 현금가)
+            # (금종류, 원가, 정가, 현금, 카드)
             self.xrows[k] = tuple(cells)
         xl.addWidget(self.xtable)
         kl.addWidget(self.xbox)
@@ -637,6 +657,7 @@ class MainWindow(QMainWindow):
         self.f_unit.currentIndexChanged.connect(self.on_change)
         self.k_white.toggled.connect(self.recompute)
         self.k_xmode.toggled.connect(self.on_change)
+        self.k_mmode.toggled.connect(self.on_change)
         self.b_manual.clicked.connect(self.apply_manual)
         self.i_price.returnPressed.connect(self.apply_manual)
         self.b_refresh.clicked.connect(self.start_fetch)
@@ -718,8 +739,8 @@ class MainWindow(QMainWindow):
         dhok = dhok and 0 <= dh < 100
         bad("dcash", not dhok)
         self.xheads[2].setText(f"정가\n원가 × {xm:g}배" if xok else "정가\n원가 × 배율")
-        self.xheads[3].setText(f"카드가\n{dc:g}% 할인" if dcok else "카드가\n할인")
-        self.xheads[4].setText(f"현금가\n{dh:g}% 할인" if dhok else "현금가\n할인")
+        self.xheads[3].setText(f"현금\n{dh:g}% 할인" if dhok else "현금\n할인")
+        self.xheads[4].setText(f"카드\n{dc:g}% 할인" if dcok else "카드\n할인")
         for k in KARAT_KEYS:
             cells = self.xrows[k]
             show = self.kchk[k].isChecked()
@@ -729,15 +750,15 @@ class MainWindow(QMainWindow):
                 continue
             pct, pok = self.num("p" + k)
             pok = pok and 0 < pct <= 100
-            kk, cl, ll, cd, ch = cells
+            kk, cl, ll, ch, cd = cells
             kk.setText(f"{k}K" + (" · 화이트" if kw else ""))
             ok = self.has_price and vok and gok and lok and pok
             cost = base(self.price, vat) * g / GPD * pct / 100 + labor + dia + setv if ok else 0
             r = karat_x(cost, xm, dc, dh, unit, kx) if ok and xok and dcok and dhok else None
             cl.setText(won(cost) if ok else "-")
             ll.setText(won(r["list"]) if r else "-")
-            cd.setText(won(r["card"]) if r else "-")
-            ch.setText(won(r["cash"]) if r else ("입력 확인" if self.has_price else "-"))
+            ch.setText(won(r["cash"]) if r else "-")
+            cd.setText(won(r["card"]) if r else ("입력 확인" if self.has_price else "-"))
 
     def white_extra(self, white: bool):
         if not white:
@@ -789,6 +810,7 @@ class MainWindow(QMainWindow):
         bad("set", not sok)
         lok = lok and dok and sok
 
+        self.mbox.setVisible(self.k_mmode.isChecked())
         any_row = False
         for k in KARAT_KEYS:
             pct, pok = self.num("p" + k)
@@ -1083,6 +1105,7 @@ class MainWindow(QMainWindow):
             self.kchk[k].setChecked(str(s.get("show" + k, "1")) == "1")
         self.c_auto.setChecked(str(s.get("auto", "1")) == "1")
         self.k_xmode.setChecked(str(s.get("xmode", "1")) == "1")
+        self.k_mmode.setChecked(str(s.get("mmode", "1")) == "1")
         try:
             u = int(s.get("unit", "0"))
         except (TypeError, ValueError):
@@ -1120,6 +1143,7 @@ class MainWindow(QMainWindow):
             s["show" + k] = "1" if self.kchk[k].isChecked() else "0"
         s["auto"] = "1" if self.c_auto.isChecked() else "0"
         s["xmode"] = "1" if self.k_xmode.isChecked() else "0"
+        s["mmode"] = "1" if self.k_mmode.isChecked() else "0"
         s["unit"] = str(self.f_unit.currentIndex())
         if self.has_price:
             s["price"] = str(int(round(self.price)))
