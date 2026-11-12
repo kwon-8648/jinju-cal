@@ -403,7 +403,7 @@ class MainWindow(QMainWindow):
         # 10K·14K·18K
         kc, kl = card()
         kh = QHBoxLayout()
-        kh.setSpacing(12)
+        kh.setSpacing(7)  # 토글 버튼이 늘어 촘촘하게 (낮은 해상도에서 가로 잘림 방지)
         kh.addWidget(label("10K · 14K · 18K 상품", "h2"))
         kh.addWidget(info_tip("표의 공임 = 공임 + 랩다이아 알값 + 다이아 셋팅비\n매입원가 = 금값 + 공임 (모두 부가세 별도, 공란은 0원)\n"
                               "중량·공임은 캐럿 공통, 마진율은 판매가 기준입니다."))
@@ -417,10 +417,7 @@ class MainWindow(QMainWindow):
         self.k_xmode.setCheckable(True)
         self.k_xmode.setToolTip("켜면 '원가 × 배율 → 현금·카드 할인가' 표를 보여 줍니다")
         kh.addWidget(self.k_xmode)
-        sep0 = QFrame()
-        sep0.setObjectName("vline")
-        sep0.setFixedSize(1, 18)
-        kh.addWidget(sep0)
+        kh.addSpacing(6)
         self.k_white = QCheckBox("화이트 도금")
         self.k_white.setToolTip("체크하면 최종 판매가(별도·포함)에 화이트골드 추가금을 더합니다")
         kh.addWidget(self.k_white)
