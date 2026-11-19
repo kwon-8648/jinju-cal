@@ -61,6 +61,7 @@ def stylesheet():
     QLabel#note {{ color:{C['muted']}; font-size:12px; }}
     QLabel#big {{ font-size:24px; font-weight:700; }}
     QLabel#bigbase {{ font-size:24px; font-weight:700; color:{C['gold']}; }}
+    QLineEdit#bigedit {{ font-size:22px; font-weight:700; color:{C['gold']}; padding:0 6px; min-height:34px; }}
     QLabel#status {{ color:{C['muted']}; font-size:13px; }}
     QLabel#status[bad="true"] {{ color:{C['bad']}; }}
     QLabel#tip {{ color:{C['gold']}; font-size:12px; font-weight:600; }}
@@ -386,27 +387,39 @@ class MainWindow(QMainWindow):
         self.t_whs = label("", "srcoff")
         wh0.addWidget(self.t_whs)
         wh0.addStretch(1)
-        self.o_whs_time = label("", "lab")
-        wh0.addWidget(self.o_whs_time)
         wv.addLayout(wh0)
         wvals = QHBoxLayout()
         wvals.setSpacing(18)
-        for attr, cap, name in [("o_whs", "부가세 별도", "bigbase"), ("o_whs_incl", "부가세 포함", "big")]:
-            box = QVBoxLayout()
-            box.setSpacing(0)
-            box.addWidget(label(cap, "lab"))
-            v = label("-", name)
-            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            setattr(self, attr, v)
-            box.addWidget(v)
-            wvals.addLayout(box, 1)
+        # 부가세 별도: 가격 자리에 바로 입력 (Enter 또는 '도매가 적용')
+        box = QVBoxLayout()
+        box.setSpacing(0)
+        box.addWidget(label("부가세 별도 · 여기에 입력", "lab"))
+        er = QHBoxLayout()
+        er.setSpacing(4)
+        self.i_whs = QLineEdit()
+        self.i_whs.setObjectName("bigedit")
+        self.i_whs.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.i_whs.setPlaceholderText("예: 560,000")
+        self.i_whs.setMinimumWidth(150)
+        self.i_whs.setToolTip("사업자 도매가(부가세 별도, 1돈)를 입력하고 Enter 또는 '도매가 적용'")
+        er.addWidget(self.i_whs, 1)
+        wonl = label("원", "bigbase")
+        er.addWidget(wonl)
+        box.addLayout(er)
+        self.o_whs = self.i_whs  # 표시 = 입력 칸
+        wvals.addLayout(box, 1)
+        box2 = QVBoxLayout()
+        box2.setSpacing(0)
+        box2.addWidget(label("부가세 포함", "lab"))
+        self.o_whs_incl = label("-", "big")
+        self.o_whs_incl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        box2.addWidget(self.o_whs_incl)
+        wvals.addLayout(box2, 1)
         wv.addLayout(wvals)
         wrow = QHBoxLayout()
         wrow.setSpacing(6)
-        self.fw = Field("도매가 입력 · 부가세 별도 (원/돈)", "예: 560,000")
-        self.i_whs = self.fw.edit
-        self.i_whs.setMinimumWidth(120)
-        wrow.addWidget(self.fw, 1)
+        self.o_whs_time = label("", "lab", wrap=True)
+        wrow.addWidget(self.o_whs_time, 1, Qt.AlignBottom)
         self.b_whs = button("도매가 적용")
         wrow.addWidget(self.b_whs, 0, Qt.AlignBottom)
         wv.addLayout(wrow)
@@ -847,9 +860,10 @@ class MainWindow(QMainWindow):
         unit = UNITS[self.f_unit.currentData() or 0]
         self.o_incl.setText(won(self.price) if self.has_price else "-")
         self.o_base.setText(won(base(self.price, vat)) if self.has_price and vok else "-")
-        self.o_whs.setText(won(self.whs) if self.has_whs else "-")
+        if self.has_whs and not self.i_whs.hasFocus() and parse_num(self.i_whs.text())[0] != self.whs:
+            self.i_whs.setText(commas(self.whs))
         self.o_whs_incl.setText(won(self.whs * (1 + vat / 100)) if self.has_whs and vok else "-")
-        self.o_whs_time.setText(f"적용 {self.whs_time}" if self.has_whs and self.whs_time else "")
+        self.o_whs_time.setText(f"적용 {self.whs_time}" if self.has_whs and self.whs_time else "도매가를 입력하고 Enter 또는 적용")
         self.o_kgx_time.setText((f"조회 {self.price_time}" if self.has_price and self.price_time else "조회 전") +
                                 (" · 10분마다 자동조회" if self.c_auto.isChecked() else ""))
         whs_on = self.b_src_whs.isChecked()

@@ -191,7 +191,7 @@ _k14 = w.xrows["14"][1].text()
 w.i_whs.setText("650,000")
 w.apply_whs()
 pump(10)
-check("도매가 적용 → 계산 기준 도매가로", w.b_src_whs.isChecked() and w.o_whs.text() == core.won(650000)
+check("도매가 적용 → 계산 기준 도매가로", w.b_src_whs.isChecked() and w.i_whs.text() == "650,000"
       and w.o_whs_incl.text() == core.won(650000 * 1.1))
 check("도매가 기준 1돈 금액 (부가세 별도 = 도매가 × 함량)", w.dons["14"][1].text() == core.won(650000 * 0.585) and "도매가 기준" in w.dons["14"][0].text())
 _cw = 650000 * core.parse_num(w.f["ag"].text())[0] / core.GPD * 0.585 + core.parse_num(w.f["al"].text(), True)[0]
