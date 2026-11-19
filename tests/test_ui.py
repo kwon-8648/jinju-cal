@@ -2,6 +2,7 @@
 import http.server
 import json
 import os
+from PySide6.QtCore import Qt
 from pathlib import Path
 import sys
 import tempfile
@@ -197,8 +198,22 @@ _cw = 650000 * core.parse_num(w.f["ag"].text())[0] / core.GPD * 0.585 + core.par
 check("도매가 기준 잡금 매입원가·배율표", w.krows["14"][3].text() == core.won(_cw) and w.xrows["14"][1].text() == core.won(_cw), (w.krows["14"][3].text(), core.won(_cw)))
 _pr = core.pure(650000 * 1.1, 10, core.parse_num(w.f["pg"].text())[0], 0, core.parse_num(w.f["pl"].text(), True)[0], _u, 2)
 check("도매가 기준 순금 상품", _pr is None or w.pcells["finx"].text() == core.won(_pr["x2"]), (w.pcells["finx"].text(), _pr))
-w.b_src_kgx.setChecked(True)
+from PySide6.QtTest import QTest as _QT
+_QT.mouseClick(w.src_kgx, Qt.LeftButton, pos=w.src_kgx.rect().center())
 pump(10)
+check("한국금거래소 칸 클릭 → 계산 기준", w.b_src_kgx.isChecked() and w.t_kgx.text() == "계산 기준" and w.t_whs.text() == "클릭하면 계산 기준")
+_QT.mouseClick(w.src_whs, Qt.LeftButton, pos=w.src_whs.rect().center() / 3)
+pump(10)
+check("도매가 칸 클릭 → 계산 기준", w.b_src_whs.isChecked() and w.t_whs.text() == "계산 기준")
+check("한국금거래소 칸: 수동 입력 대신 '자동 시세 적용' 버튼", not w.i_price.isVisible() and not w.b_manual.isVisible()
+      and w.b_auto_apply.isVisible() and w.b_auto_apply.text() == "자동 시세 적용")
+_sf = w.start_fetch
+_calls = []
+w.start_fetch = lambda: _calls.append(1)
+w.b_auto_apply.click()
+w.start_fetch = _sf
+pump(10)
+check("자동 시세 적용 → 한국금거래소 기준 + 최신 시세 조회", w.b_src_kgx.isChecked() and _calls == [1])
 check("한국금거래소로 돌리면 원래 값", w.xrows["14"][1].text() == _k14 and "한국금거래소 기준" in w.dons["14"][0].text())
 w.b_src_whs.setChecked(True)
 pump(10)
@@ -283,8 +298,8 @@ pp2 = core.pure(598000, 10, 11.25, 20000, 50000, 1000)
 check("순금 고리 넣으면 매입원가·판매가에 반영", w.pcells["cost"].text() == core.won(598000 / 1.1 * 11.25 / 3.75 + 20000 + 50000) and w.pcells["fin"].text() == core.won(pp2["i2"]), (w.pcells["cost"].text(), w.pcells["fin"].text()))
 check("순금 g → 돈", w.f["pd"].text() == "3.00")
 
-check("초기화 버튼은 수동 시세 적용과 같은 색", w.k_clear.objectName() == w.b_manual.objectName() == w.p_clear.objectName()
-      and w.k_clear.palette().button().color() == w.b_manual.palette().button().color())
+check("초기화 버튼은 자동 시세 적용과 같은 색", w.k_clear.objectName() == w.b_auto_apply.objectName() == w.p_clear.objectName()
+      and w.k_clear.palette().button().color() == w.b_auto_apply.palette().button().color())
 w.clear_section("p")
 check("순금 초기화", all(w.f[k].text() == "" for k in ("pg", "pd", "ring", "pl")) and w.pcells["finx"].text() == "-" and w.pcells["cost"].text() == "-")
 # 업데이트 버튼

@@ -6,7 +6,7 @@ from datetime import datetime
 
 import threading
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
@@ -322,19 +322,15 @@ class MainWindow(QMainWindow):
 
         # --- 시세: 한국금거래소(자동, 부가세 포함) / 사업자 도매가(수동, 부가세 별도) 중 계산 기준 선택
         pc, pl = card()
-        # 계산 기준 토글은 맨 위 제목 줄에 (세로 공간 절약)
-        srcbox = QHBoxLayout()
-        srcbox.setSpacing(6)
-        srcbox.addWidget(label("순금 1돈 계산 기준", "lab"))
-        self.b_src_kgx = button("한국금거래소", "toggle")
-        self.b_src_whs = button("도매가", "toggle")
+        # 계산 기준: 두 가격 칸 중 하나를 클릭해서 고름 (아래 두 버튼은 화면에 안 보이는 상태 저장용)
+        self.src_holder = QWidget()
+        self.b_src_kgx = QPushButton(self.src_holder)
+        self.b_src_whs = QPushButton(self.src_holder)
         for b in (self.b_src_kgx, self.b_src_whs):
             b.setCheckable(True)
             b.setAutoExclusive(True)
-            srcbox.addWidget(b)
+        self.src_holder.hide()
         self.b_src_kgx.setChecked(True)
-        self.top_row.insertSpacing(1, 24)
-        self.top_row.insertLayout(2, srcbox)
 
         prow = QHBoxLayout()
         prow.setSpacing(10)
@@ -366,14 +362,17 @@ class MainWindow(QMainWindow):
         kv.addLayout(kvals)
         manual = QHBoxLayout()
         manual.setSpacing(6)
+        # 수동 시세 입력은 '사업자 도매가' 칸이 맡으므로, 여기는 자동 시세를 받아 계산 기준으로 쓰는 버튼만
         self.fp = Field("시세 입력 · 부가세 포함 (원/돈)", "예: 612,000")
         self.i_price = self.fp.edit
-        self.i_price.setMinimumWidth(120)
-        manual.addWidget(self.fp, 1)
-        self.b_manual = button("수동 시세 적용")
-        self.b_refresh = button("새로고침", "ghost")
-        manual.addWidget(self.b_manual, 0, Qt.AlignBottom)
-        manual.addWidget(self.b_refresh, 0, Qt.AlignBottom)
+        self.fp.setParent(self.src_holder)
+        self.b_manual = QPushButton(self.src_holder)
+        self.b_refresh = QPushButton(self.src_holder)
+        self.o_kgx_time = label("", "lab", wrap=True)
+        manual.addWidget(self.o_kgx_time, 1, Qt.AlignBottom)
+        self.b_auto_apply = button("자동 시세 적용")
+        self.b_auto_apply.setToolTip("한국금거래소 최신 시세를 받아 계산 기준으로 씁니다")
+        manual.addWidget(self.b_auto_apply, 0, Qt.AlignBottom)
         kv.addLayout(manual)
         prow.addWidget(self.src_kgx, 1)
         # 오른쪽: 사업자 도매가
@@ -413,6 +412,10 @@ class MainWindow(QMainWindow):
         wv.addLayout(wrow)
         prow.addWidget(self.src_whs, 1)
         pl.addLayout(prow)
+        for fr in (self.src_kgx, self.src_whs):
+            fr.setCursor(Qt.PointingHandCursor)
+            fr.installEventFilter(self)
+            fr.setToolTip("클릭하면 이 가격으로 계산합니다")
 
         line = QFrame()
         line.setObjectName("hline")
@@ -727,6 +730,7 @@ class MainWindow(QMainWindow):
         self.b_manual.clicked.connect(self.apply_manual)
         self.i_price.returnPressed.connect(self.apply_manual)
         self.b_refresh.clicked.connect(self.start_fetch)
+        self.b_auto_apply.clicked.connect(self.apply_auto)
         self.b_whs.clicked.connect(self.apply_whs)
         self.i_whs.returnPressed.connect(self.apply_whs)
         self.b_src_whs.toggled.connect(self.on_change)
@@ -846,12 +850,14 @@ class MainWindow(QMainWindow):
         self.o_whs.setText(won(self.whs) if self.has_whs else "-")
         self.o_whs_incl.setText(won(self.whs * (1 + vat / 100)) if self.has_whs and vok else "-")
         self.o_whs_time.setText(f"적용 {self.whs_time}" if self.has_whs and self.whs_time else "")
+        self.o_kgx_time.setText((f"조회 {self.price_time}" if self.has_price and self.price_time else "조회 전") +
+                                (" · 10분마다 자동조회" if self.c_auto.isChecked() else ""))
         whs_on = self.b_src_whs.isChecked()
         for fr, tag, on in ((self.src_kgx, self.t_kgx, not whs_on), (self.src_whs, self.t_whs, whs_on)):
             fr.setProperty("on", "true" if on else "false")
             fr.style().unpolish(fr)
             fr.style().polish(fr)
-            tag.setText("계산 기준" if on else "")
+            tag.setText("계산 기준" if on else "클릭하면 계산 기준")
             tag.setObjectName("srcon" if on else "srcoff")
             tag.style().unpolish(tag)
             tag.style().polish(tag)
@@ -982,12 +988,16 @@ class MainWindow(QMainWindow):
             return
         self.fetching = True
         self.b_refresh.setEnabled(False)
+        self.b_auto_apply.setEnabled(False)
+        self.b_auto_apply.setText("조회 중…")
         self.set_status("한국금거래소 ‘내가 살 때’ 시세 조회 중…")
         self.fetcher.start()
 
     def on_fetched(self, q, err):
         self.fetching = False
         self.b_refresh.setEnabled(True)
+        self.b_auto_apply.setEnabled(True)
+        self.b_auto_apply.setText("자동 시세 적용")
         if err:
             tail = f"이전 시세 유지, 최신 아님 ({self.price_time})" if self.has_price else "수동 시세를 입력하세요"
             self.set_status(f"조회 실패 ({err}) · {tail}", True)
@@ -1016,6 +1026,23 @@ class MainWindow(QMainWindow):
         self.set_status("수동 입력 시세 적용 / " + self.price_time)
         self.save_settings()
         self.recompute()
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.MouseButtonRelease and obj in (getattr(self, "src_kgx", None), getattr(self, "src_whs", None)):
+            if obj is self.src_whs:
+                if self.has_whs:
+                    self.b_src_whs.setChecked(True)
+                else:
+                    self.i_whs.setFocus()
+            else:
+                self.b_src_kgx.setChecked(True)
+            return False
+        return super().eventFilter(obj, ev)
+
+    def apply_auto(self):
+        """자동 시세 적용: 한국금거래소를 계산 기준으로 하고 최신 시세를 받음."""
+        self.b_src_kgx.setChecked(True)
+        self.start_fetch()
 
     def apply_whs(self):
         v, ok = parse_num(self.i_whs.text())
