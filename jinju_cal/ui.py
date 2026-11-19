@@ -96,6 +96,10 @@ def stylesheet():
     QFrame#vline {{ background:{C['line']}; border:none; }}
     QLabel#kfin {{ font-size:17px; font-weight:700; background:{C['soft']}; border-radius:4px; padding:2px 8px; }}
     QFrame#cell {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
+    QFrame#src {{ border:1px solid {C['line']}; border-radius:6px; background:{C['panel']}; }}
+    QFrame#src[on="true"] {{ border:2px solid {C['gold']}; background:#fffaf0; }}
+    QLabel#srcon {{ color:{C['gold_ink']}; background:{C['gold']}; border-radius:3px; padding:1px 6px; font-size:11px; font-weight:700; }}
+    QLabel#srcoff {{ color:{C['muted']}; font-size:11px; }}
     QFrame#cellx {{ border:1px solid {C['line']}; border-radius:4px; background:{C['panel']}; }}
     QFrame#cellincl {{ border:1px solid {C['line']}; border-radius:4px; background:{C['soft']}; }}
     QLabel#donv {{ font-size:17px; font-weight:700; }}
@@ -249,6 +253,9 @@ class MainWindow(QMainWindow):
         self.has_price = False
         self.price_time = ""
         self.source = ""
+        self.whs = 0.0          # 사업자 도매가 (부가세 별도, 수동)
+        self.has_whs = False
+        self.whs_time = ""
         self.ag_exact = None  # 돈으로 입력했을 때의 정확한 g
         self.pg_exact = None
         self.loading = False
@@ -295,6 +302,7 @@ class MainWindow(QMainWindow):
         title.setFont(tf)
         top.addWidget(title, 0, Qt.AlignTop)
         top.addStretch(1)
+        self.top_row = top
         corner = QVBoxLayout()
         corner.setSpacing(2)
         self.o_status = label("조회 전입니다. 시세를 조회하거나 수동 입력하세요.", "status", wrap=True)
@@ -312,37 +320,98 @@ class MainWindow(QMainWindow):
         top.addLayout(corner)
         root.addLayout(top)
 
-        # --- 시세
+        # --- 시세: 한국금거래소(자동, 부가세 포함) / 사업자 도매가(수동, 부가세 별도) 중 계산 기준 선택
         pc, pl = card()
-        head = QHBoxLayout()
-        head.addWidget(label("순금 1돈(3.75g) · 내가 살 때", "h2"))
-        head.addStretch(1)
-        self.c_auto = QCheckBox("자동조회 (실행 시 / 10분 간격)")
-        head.addWidget(self.c_auto)
-        pl.addLayout(head)
+        # 계산 기준 토글은 맨 위 제목 줄에 (세로 공간 절약)
+        srcbox = QHBoxLayout()
+        srcbox.setSpacing(6)
+        srcbox.addWidget(label("순금 1돈 계산 기준", "lab"))
+        self.b_src_kgx = button("한국금거래소", "toggle")
+        self.b_src_whs = button("도매가", "toggle")
+        for b in (self.b_src_kgx, self.b_src_whs):
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            srcbox.addWidget(b)
+        self.b_src_kgx.setChecked(True)
+        self.top_row.insertSpacing(1, 24)
+        self.top_row.insertLayout(2, srcbox)
 
         prow = QHBoxLayout()
-        prow.setSpacing(24)
-        for attr, cap, name in [("o_base", "부가세 별도 가격 · 계산 기준", "bigbase"), ("o_incl", "부가세 포함 가격", "big")]:
+        prow.setSpacing(10)
+        # 왼쪽: 한국금거래소
+        self.src_kgx = QFrame()
+        self.src_kgx.setObjectName("src")
+        kv = QVBoxLayout(self.src_kgx)
+        kv.setContentsMargins(12, 8, 12, 10)
+        kv.setSpacing(4)
+        kh0 = QHBoxLayout()
+        kh0.addWidget(label("한국금거래소 · 내가 살 때", "h3"))
+        self.t_kgx = label("계산 기준", "srcon")
+        kh0.addWidget(self.t_kgx)
+        kh0.addStretch(1)
+        self.c_auto = QCheckBox("자동조회 (10분)")
+        kh0.addWidget(self.c_auto)
+        kv.addLayout(kh0)
+        kvals = QHBoxLayout()
+        kvals.setSpacing(18)
+        for attr, cap, name in [("o_base", "부가세 별도", "bigbase"), ("o_incl", "부가세 포함", "big")]:
             box = QVBoxLayout()
-            box.setSpacing(2)
+            box.setSpacing(0)
             box.addWidget(label(cap, "lab"))
             v = label("-", name)
             v.setTextInteractionFlags(Qt.TextSelectableByMouse)
             setattr(self, attr, v)
             box.addWidget(v)
-            prow.addLayout(box, 1)
+            kvals.addLayout(box, 1)
+        kv.addLayout(kvals)
         manual = QHBoxLayout()
-        manual.setSpacing(8)
+        manual.setSpacing(6)
         self.fp = Field("시세 입력 · 부가세 포함 (원/돈)", "예: 612,000")
         self.i_price = self.fp.edit
-        self.i_price.setMinimumWidth(170)
+        self.i_price.setMinimumWidth(120)
         manual.addWidget(self.fp, 1)
         self.b_manual = button("수동 시세 적용")
-        self.b_refresh = button("시세 새로고침", "ghost")
+        self.b_refresh = button("새로고침", "ghost")
         manual.addWidget(self.b_manual, 0, Qt.AlignBottom)
         manual.addWidget(self.b_refresh, 0, Qt.AlignBottom)
-        prow.addLayout(manual, 2)
+        kv.addLayout(manual)
+        prow.addWidget(self.src_kgx, 1)
+        # 오른쪽: 사업자 도매가
+        self.src_whs = QFrame()
+        self.src_whs.setObjectName("src")
+        wv = QVBoxLayout(self.src_whs)
+        wv.setContentsMargins(12, 8, 12, 10)
+        wv.setSpacing(4)
+        wh0 = QHBoxLayout()
+        wh0.addWidget(label("사업자 도매가 · 수동", "h3"))
+        self.t_whs = label("", "srcoff")
+        wh0.addWidget(self.t_whs)
+        wh0.addStretch(1)
+        self.o_whs_time = label("", "lab")
+        wh0.addWidget(self.o_whs_time)
+        wv.addLayout(wh0)
+        wvals = QHBoxLayout()
+        wvals.setSpacing(18)
+        for attr, cap, name in [("o_whs", "부가세 별도", "bigbase"), ("o_whs_incl", "부가세 포함", "big")]:
+            box = QVBoxLayout()
+            box.setSpacing(0)
+            box.addWidget(label(cap, "lab"))
+            v = label("-", name)
+            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            setattr(self, attr, v)
+            box.addWidget(v)
+            wvals.addLayout(box, 1)
+        wv.addLayout(wvals)
+        wrow = QHBoxLayout()
+        wrow.setSpacing(6)
+        self.fw = Field("도매가 입력 · 부가세 별도 (원/돈)", "예: 560,000")
+        self.i_whs = self.fw.edit
+        self.i_whs.setMinimumWidth(120)
+        wrow.addWidget(self.fw, 1)
+        self.b_whs = button("도매가 적용")
+        wrow.addWidget(self.b_whs, 0, Qt.AlignBottom)
+        wv.addLayout(wrow)
+        prow.addWidget(self.src_whs, 1)
         pl.addLayout(prow)
 
         line = QFrame()
@@ -658,6 +727,9 @@ class MainWindow(QMainWindow):
         self.b_manual.clicked.connect(self.apply_manual)
         self.i_price.returnPressed.connect(self.apply_manual)
         self.b_refresh.clicked.connect(self.start_fetch)
+        self.b_whs.clicked.connect(self.apply_whs)
+        self.i_whs.returnPressed.connect(self.apply_whs)
+        self.b_src_whs.toggled.connect(self.on_change)
         self.c_auto.toggled.connect(self.on_auto)
         self.b_reset.clicked.connect(self.reset_defaults)
         self.k_clear.clicked.connect(lambda: self.clear_section("k"))
@@ -749,13 +821,13 @@ class MainWindow(QMainWindow):
             pok = pok and 0 < pct <= 100
             kk, cl, ll, ch, cd = cells
             kk.setText(f"{k}K" + (" · 화이트" if kw else ""))
-            ok = self.has_price and vok and gok and lok and pok
-            cost = base(self.price, vat) * g / GPD * pct / 100 + labor + dia + setv if ok else 0
+            ok = self._ready and vok and gok and lok and pok
+            cost = base(self._P, vat) * g / GPD * pct / 100 + labor + dia + setv if ok else 0
             r = karat_x(cost, xm, dc, dh, unit, kx) if ok and xok and dcok and dhok else None
             cl.setText(won(cost) if ok else "-")
             ll.setText(won(r["list"]) if r else "-")
             ch.setText(won(r["cash"]) if r else "-")
-            cd.setText(won(r["card"]) if r else ("입력 확인" if self.has_price else "-"))
+            cd.setText(won(r["card"]) if r else ("입력 확인" if self._ready else "-"))
 
     def white_extra(self, white: bool):
         if not white:
@@ -771,18 +843,32 @@ class MainWindow(QMainWindow):
         unit = UNITS[self.f_unit.currentData() or 0]
         self.o_incl.setText(won(self.price) if self.has_price else "-")
         self.o_base.setText(won(base(self.price, vat)) if self.has_price and vok else "-")
+        self.o_whs.setText(won(self.whs) if self.has_whs else "-")
+        self.o_whs_incl.setText(won(self.whs * (1 + vat / 100)) if self.has_whs and vok else "-")
+        self.o_whs_time.setText(f"적용 {self.whs_time}" if self.has_whs and self.whs_time else "")
+        whs_on = self.b_src_whs.isChecked()
+        for fr, tag, on in ((self.src_kgx, self.t_kgx, not whs_on), (self.src_whs, self.t_whs, whs_on)):
+            fr.setProperty("on", "true" if on else "false")
+            fr.style().unpolish(fr)
+            fr.style().polish(fr)
+            tag.setText("계산 기준" if on else "")
+            tag.setObjectName("srcon" if on else "srcoff")
+            tag.style().unpolish(tag)
+            tag.style().polish(tag)
+        self._P, self._ready = self.calc_price(vat if vok else 0)
         # 10K·14K·18K 1돈 = 순금 1돈 × 함량 (부가세 포함 · 별도)
         for k in self.dons:
             pct, pok = self.num("p" + k)
             pok = pok and 0 < pct <= 100
             cap, v, sub = self.dons[k]
-            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%) · 부가세 별도" if pok else f"{k}K 1돈 · 부가세 별도")
-            if self.has_price and vok and pok:
-                v.setText(won(base(self.price, vat) * pct / 100))  # 부가세 별도가 크게
-                sub.setText("부가세 포함 " + won(self.price * pct / 100))
+            srcn = "도매가" if whs_on else "한국금거래소"
+            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%) · 부가세 별도 · {srcn} 기준" if pok else f"{k}K 1돈 · 부가세 별도")
+            if self._ready and vok and pok:
+                v.setText(won(base(self._P, vat) * pct / 100))  # 부가세 별도가 크게
+                sub.setText("부가세 포함 " + won(self._P * pct / 100))
             else:
                 v.setText("-")
-                sub.setText("함량 확인" if self.has_price and not pok else "")
+                sub.setText("함량 확인" if self._ready and not pok else "")
 
         if self.ag_exact is not None:
             g, gok = self.ag_exact, True
@@ -823,13 +909,13 @@ class MainWindow(QMainWindow):
             if not on:
                 continue
             any_row = True
-            r = karat(self.price, vat, g, labor, dia, setv, pct, m, unit) if (self.has_price and vok and gok and lok and pok and mok) else None
+            r = karat(self._P, vat, g, labor, dia, setv, pct, m, unit) if (self._ready and vok and gok and lok and pok and mok) else None
             if r:
                 kk.setText(two_line(f"{k}K", "화이트 도금" if kw else ""))
                 gl.setText(won(r["gold"]))
                 ll.setText(won(labor + dia + setv))
                 cl.setText(won(r["gold"] + labor + dia + setv))
-                x = karat_excl(self.price, vat, g, labor, dia, setv, pct, m, unit, kx)
+                x = karat_excl(self._P, vat, g, labor, dia, setv, pct, m, unit, kx)
                 fx.setText(two_line(won(x), f"도금 +{commas(kx)} 포함" if kx else ""))
                 fl.setText(two_line(won(r["final"] + kx), f"도금 +{commas(kx)} 포함" if kx else ""))
                 fx.setToolTip("")
@@ -840,8 +926,8 @@ class MainWindow(QMainWindow):
                 ll.setText("-")
                 cl.setText("-")
                 fx.setText(two_line("-", ""))
-                fl.setText(two_line("입력 확인" if self.has_price else "-", ""))
-                tip = "노란 칸 중 빨간 칸을 확인하세요" if self.has_price else "시세를 먼저 입력하세요"
+                fl.setText(two_line("입력 확인" if self._ready else "-", ""))
+                tip = "노란 칸 중 빨간 칸을 확인하세요" if self._ready else "시세를 먼저 입력하세요"
                 fx.setToolTip(tip)
                 fl.setToolTip(tip)
         self.recompute_x(vat, vok, g, gok, labor, lok, dia, setv, unit, kw, kx)
@@ -870,9 +956,9 @@ class MainWindow(QMainWindow):
         mtxt = f"{pm:g}"
         self.pcaps["finx"].setText(f"최종 판매가 · 부가세 별도 (공임 {mtxt}배)" if pmok else "최종 판매가 · 부가세 별도")
         self.pcaps["fin"].setText(f"최종 판매가 · 부가세 포함 (공임 {mtxt}배)" if pmok else "최종 판매가 · 부가세 포함")
-        pr = pure(self.price, vat, pg, ring, pl, unit, pm) if (self.has_price and vok and pgok and rok and plok and pmok) else None
+        pr = pure(self._P, vat, pg, ring, pl, unit, pm) if (self._ready and vok and pgok and rok and plok and pmok) else None
         # 매입원가 = 금값 + 고리 + 공임 (부가세 별도) · 최종 판매가 = 매입원가 + 공임 × 배율 (별도·포함)
-        self.pcells["cost"].setText(won(self.price / (1 + vat / 100) * pg / GPD + ring + pl) if pr else "-")
+        self.pcells["cost"].setText(won(self._P / (1 + vat / 100) * pg / GPD + ring + pl) if pr else "-")
         self.pcells["finx"].setText(won(pr["x2"]) if pr else "-")
         self.pcells["fin"].setText(won(pr["i2"]) if pr else "-")
 
@@ -930,6 +1016,28 @@ class MainWindow(QMainWindow):
         self.set_status("수동 입력 시세 적용 / " + self.price_time)
         self.save_settings()
         self.recompute()
+
+    def apply_whs(self):
+        v, ok = parse_num(self.i_whs.text())
+        if not ok or v <= 0 or v > 1e12:
+            QMessageBox.information(self, "입력 확인", "0보다 큰 도매가(부가세 별도)를 숫자로 입력하세요.")
+            self.i_whs.setFocus()
+            return
+        self.whs = v
+        self.has_whs = True
+        self.whs_time = now_sec()
+        self.i_whs.setText(commas(v))
+        if not self.b_src_whs.isChecked():
+            self.b_src_whs.setChecked(True)  # 도매가를 넣으면 계산 기준도 도매가로
+        self.save_settings()
+        self.recompute()
+
+    def calc_price(self, vat):
+        """계산에 쓰는 순금 1돈 가격 (부가세 포함 기준으로 맞춤) · 준비 여부.
+        도매가는 부가세 별도이므로 × (1 + 부가세) 로 바꿔 넘기면 계산식의 부가세 별도 값 = 도매가 그대로."""
+        if self.b_src_whs.isChecked():
+            return self.whs * (1 + vat / 100), self.has_whs
+        return self.price, self.has_price
 
     def set_auto_timer(self):
         self.auto_timer.stop()
@@ -1101,6 +1209,11 @@ class MainWindow(QMainWindow):
         for k in KARAT_KEYS:
             self.kchk[k].setChecked(str(s.get("show" + k, "1")) == "1")
         self.c_auto.setChecked(str(s.get("auto", "1")) == "1")
+        w_, wok_ = parse_num(s.get("whs", ""))
+        if wok_ and w_ > 0:
+            self.whs, self.has_whs, self.whs_time = w_, True, s.get("whs_time", "")
+            self.i_whs.setText(commas(w_))
+        (self.b_src_whs if s.get("src") == "whs" else self.b_src_kgx).setChecked(True)
         self.k_xmode.setChecked(str(s.get("xmode", "1")) == "1")
         self.k_mmode.setChecked(str(s.get("mmode", "1")) == "1")
         try:
@@ -1139,6 +1252,10 @@ class MainWindow(QMainWindow):
         for k in KARAT_KEYS:
             s["show" + k] = "1" if self.kchk[k].isChecked() else "0"
         s["auto"] = "1" if self.c_auto.isChecked() else "0"
+        s["src"] = "whs" if self.b_src_whs.isChecked() else "kgx"
+        if self.has_whs:
+            s["whs"] = str(int(round(self.whs)))
+            s["whs_time"] = self.whs_time
         s["xmode"] = "1" if self.k_xmode.isChecked() else "0"
         s["mmode"] = "1" if self.k_mmode.isChecked() else "0"
         s["unit"] = str(self.f_unit.currentIndex())
