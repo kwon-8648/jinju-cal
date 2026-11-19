@@ -288,6 +288,29 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(3000, lambda: self.check_update(quiet=True))
 
     # ------------------------------------------------------------------ 화면
+    def build_dons(self, parent_layout, key):
+        """가격 칸 안의 잡금 1돈 금액 (14K·18K, 부가세 별도 크게 · 포함 작게)."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        cells = {}
+        for k in ("14", "18"):  # 10K 는 표시하지 않음
+            fr = QFrame()
+            fr.setObjectName("cell")
+            vl = QVBoxLayout(fr)
+            vl.setContentsMargins(10, 3, 10, 4)
+            vl.setSpacing(0)
+            cap = label(f"{k}K 1돈 · 부가세 별도", "lab")
+            v = label("-", "donv")
+            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            sub = label("", "lab")
+            vl.addWidget(cap)
+            vl.addWidget(v)
+            vl.addWidget(sub)
+            cells[k] = (cap, v, sub)
+            row.addWidget(fr, 1)
+        parent_layout.addLayout(row)
+        self.dons_src[key] = cells
+
     def build(self):
         page = QWidget()
         page.setObjectName("page")
@@ -369,11 +392,13 @@ class MainWindow(QMainWindow):
         self.fp.setParent(self.src_holder)
         self.b_manual = QPushButton(self.src_holder)
         self.b_refresh = QPushButton(self.src_holder)
-        self.o_kgx_time = label("", "lab", wrap=True)
+        self.o_kgx_time = label("", "lab")
         manual.addWidget(self.o_kgx_time, 1, Qt.AlignBottom)
         self.b_auto_apply = button("자동 시세 적용")
         self.b_auto_apply.setToolTip("한국금거래소 최신 시세를 받아 계산 기준으로 씁니다")
         manual.addWidget(self.b_auto_apply, 0, Qt.AlignBottom)
+        self.dons_src = {}
+        self.build_dons(kv, "kgx")
         kv.addLayout(manual)
         prow.addWidget(self.src_kgx, 1)
         # 오른쪽: 사업자 도매가
@@ -418,10 +443,11 @@ class MainWindow(QMainWindow):
         wv.addLayout(wvals)
         wrow = QHBoxLayout()
         wrow.setSpacing(6)
-        self.o_whs_time = label("", "lab", wrap=True)
+        self.o_whs_time = label("", "lab")
         wrow.addWidget(self.o_whs_time, 1, Qt.AlignBottom)
         self.b_whs = button("도매가 적용")
         wrow.addWidget(self.b_whs, 0, Qt.AlignBottom)
+        self.build_dons(wv, "whs")
         wv.addLayout(wrow)
         prow.addWidget(self.src_whs, 1)
         pl.addLayout(prow)
@@ -430,30 +456,6 @@ class MainWindow(QMainWindow):
             fr.installEventFilter(self)
             fr.setToolTip("클릭하면 이 가격으로 계산합니다")
 
-        line = QFrame()
-        line.setObjectName("hline")
-        pl.addWidget(line)
-        drow = QHBoxLayout()
-        drow.setSpacing(10)
-        dcap = label("1돈 금액", "lab")
-        drow.addWidget(dcap, 0, Qt.AlignVCenter)
-        self.dons = {}
-        for k in ("14", "18"):  # 10K 는 표시하지 않음
-            fr = QFrame()
-            fr.setObjectName("cell")
-            vl = QVBoxLayout(fr)
-            vl.setContentsMargins(12, 4, 12, 5)
-            vl.setSpacing(0)
-            cap = label(f"{k}K 1돈 · 부가세 별도", "lab")
-            v = label("-", "donv")
-            v.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            sub = label("", "lab")
-            vl.addWidget(cap)
-            vl.addWidget(v)
-            vl.addWidget(sub)
-            self.dons[k] = (cap, v, sub)
-            drow.addWidget(fr, 1)
-        pl.addLayout(drow)
         root.addWidget(pc)
 
         # --- 아래: 기준값 | 상품 계산
@@ -876,19 +878,20 @@ class MainWindow(QMainWindow):
             tag.style().unpolish(tag)
             tag.style().polish(tag)
         self._P, self._ready = self.calc_price(vat if vok else 0)
-        # 10K·14K·18K 1돈 = 순금 1돈 × 함량 (부가세 포함 · 별도)
-        for k in self.dons:
-            pct, pok = self.num("p" + k)
-            pok = pok and 0 < pct <= 100
-            cap, v, sub = self.dons[k]
-            srcn = "도매가" if whs_on else "한국금거래소"
-            cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%) · 부가세 별도 · {srcn} 기준" if pok else f"{k}K 1돈 · 부가세 별도")
-            if self._ready and vok and pok:
-                v.setText(won(base(self._P, vat) * pct / 100))  # 부가세 별도가 크게
-                sub.setText("부가세 포함 " + won(self._P * pct / 100))
-            else:
-                v.setText("-")
-                sub.setText("함량 확인" if self._ready and not pok else "")
+        # 14K·18K 1돈 = 순금 1돈 × 함량 — 가격 칸마다 (한국금거래소 / 도매가)
+        for key, ex, ready in (("kgx", base(self.price, vat) if vok else 0, self.has_price),
+                               ("whs", self.whs, self.has_whs)):
+            for k, (cap, v, sub) in self.dons_src[key].items():
+                pct, pok = self.num("p" + k)
+                pok = pok and 0 < pct <= 100
+                cap.setText(f"{k}K 1돈 ({self.f['p' + k].text().strip()}%) · 부가세 별도" if pok else f"{k}K 1돈 · 부가세 별도")
+                if ready and vok and pok:
+                    v.setText(won(ex * pct / 100))
+                    sub.setText("부가세 포함 " + won(ex * (1 + vat / 100) * pct / 100))
+                else:
+                    v.setText("-")
+                    sub.setText("함량 확인" if ready and not pok else "")
+        self.dons = self.dons_src["whs" if whs_on else "kgx"]  # 지금 계산 기준 칸
 
         if self.ag_exact is not None:
             g, gok = self.ag_exact, True

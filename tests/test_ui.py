@@ -146,7 +146,8 @@ check("공임 칸 (알값·셋팅비 없음)", w.krows["14"][2].text() == core.w
 check("매입원가 = 금값 + 공임 (부가세 별도)", w.krows["14"][3].text() == core.won(r14["gold"] + 50000), w.krows["14"][3].text())
 # 10K·14K·18K 1돈 (순금 1돈 × 함량)
 check("1돈 금액: 10K 는 없음 (14K·18K 만)", sorted(w.dons) == ["14", "18"])
-check("1돈 금액 제목", "1돈 금액" in texts and not any("기준값 함량 비율" in t for t in texts))
+check("1돈 금액은 가격 칸마다 (한국금거래소·도매가)", sorted(w.dons_src) == ["kgx", "whs"]
+      and all("1돈" in c[0].text() for d_ in w.dons_src.values() for c in d_.values()) and not any("기준값 함량 비율" in t for t in texts))
 for k, p in (("14", 58.5), ("18", 75)):
     cap, v, sub = w.dons[k]
     check(f"{k}K 1돈: 부가세 별도가 크게, 포함은 작게", v.text() == core.won(731000 / 1.1 * p / 100) and sub.text() == "부가세 포함 " + core.won(731000 * p / 100)
@@ -193,7 +194,9 @@ w.apply_whs()
 pump(10)
 check("도매가 적용 → 계산 기준 도매가로", w.b_src_whs.isChecked() and w.i_whs.text() == "650,000"
       and w.o_whs_incl.text() == core.won(650000 * 1.1))
-check("도매가 기준 1돈 금액 (부가세 별도 = 도매가 × 함량)", w.dons["14"][1].text() == core.won(650000 * 0.585) and "도매가 기준" in w.dons["14"][0].text())
+check("도매가 칸의 1돈 금액 (부가세 별도 = 도매가 × 함량)", w.dons_src["whs"]["14"][1].text() == core.won(650000 * 0.585)
+      and w.dons_src["whs"]["18"][2].text() == "부가세 포함 " + core.won(650000 * 1.1 * 0.75))
+check("한국금거래소 칸의 1돈 금액도 같이 보임", w.dons_src["kgx"]["14"][1].text() == core.won(core.base(w.price, 10) * 0.585))
 _cw = 650000 * core.parse_num(w.f["ag"].text())[0] / core.GPD * 0.585 + core.parse_num(w.f["al"].text(), True)[0]
 check("도매가 기준 잡금 매입원가·배율표", w.krows["14"][3].text() == core.won(_cw) and w.xrows["14"][1].text() == core.won(_cw), (w.krows["14"][3].text(), core.won(_cw)))
 _pr = core.pure(650000 * 1.1, 10, core.parse_num(w.f["pg"].text())[0], 0, core.parse_num(w.f["pl"].text(), True)[0], _u, 2)
@@ -214,7 +217,7 @@ w.b_auto_apply.click()
 w.start_fetch = _sf
 pump(10)
 check("자동 시세 적용 → 한국금거래소 기준 + 최신 시세 조회", w.b_src_kgx.isChecked() and _calls == [1])
-check("한국금거래소로 돌리면 원래 값", w.xrows["14"][1].text() == _k14 and "한국금거래소 기준" in w.dons["14"][0].text())
+check("한국금거래소로 돌리면 원래 값", w.xrows["14"][1].text() == _k14)
 w.b_src_whs.setChecked(True)
 pump(10)
 w.save_settings()
